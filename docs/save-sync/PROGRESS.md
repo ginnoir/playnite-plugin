@@ -3,6 +3,43 @@
 Working through `.claude/plans/save-sync.plan.md` task briefs in order.
 Repo: fork `ginnoir/playnite-plugin`, branch `feat/save-sync`, upstream `rommapp/playnite-plugin`.
 
+---
+
+## ▶ RESUME HERE (next session) — 2026-06-09
+
+**State:** all 13 task briefs implemented & committed on `feat/save-sync` (commit `6992147`), pushed to
+`origin` (the fork). **NOT build-verified — no .NET toolchain in the authoring env.** Tomorrow = build.
+
+**Do this, in order:**
+1. Open `RomM.sln` in Visual Studio (needs PlayniteSDK 6.16 nuget + net462). `nuget restore` then build
+   Release. Fix compile errors (likely candidates: Playnite SDK method/override signature mismatches in
+   `RomM.cs` lifecycle hooks; XAML page codegen for `SaveSync/ConflictResolutionView.xaml`; any internal
+   visibility issues). Use the build-error-resolver approach: minimal surgical fixes.
+2. **Golden hash test FIRST** (correctness gate): upload a save via the plugin to a real RomM, GET the
+   `SaveSchema`, assert `content_hash` == `SaveHashing.Md5Hex(bytes)`. If mismatch, fix hashing before
+   anything else — otherwise every save reads as a conflict. (Plus a multi-entry zip fixture.)
+3. Work the manual matrix in `docs/save-sync/QA.md` (RetroArch + standalone mGBA + one more; GBA/SNES/PSX/N64).
+4. Re-verify the 5 ⚠️LIVE contract items in `docs/save-sync/CONTRACT.md` §9 against the user's RomM version.
+5. When green, open the upstream PR (held intentionally — outward/public + unbuilt):
+   `gh pr create --repo rommapp/playnite-plugin --head ginnoir:feat/save-sync --title "feat: save & state sync with RomM" --draft --body-file <notes>`
+
+**Authoring-env constraints to remember:** GateGuard fact-forcing hook gates new-file Write + Bash + .cs/.csproj/.yaml/.md-new edits (present 4 facts, retry; edits to existing .md NOT gated). No SDK/MSBuild/VS here.
+
+**Key design facts (don't re-derive):** RomM owns conflict resolution (`/api/sync/negotiate` →
+`compare_save_state`); plugin only reports state + executes ops. content_hash = MD5 (raw; zip = sorted
+per-entry `name:md5` joined by \n then md5). Register device `sync_mode="api"`, fingerprint = mac+hostname+platform.
+Canonical save = `<romBase>.<canonicalExt>` (srm for SRAM systems), `slot=null`, `emulator` omitted (one shared save).
+N64 .srm layout (verified libretro): eep@0x0/0x800, mpk@0x800/0x20000, sra@0x20800/0x8000, fla@0x28800/0x20000 = 0x48800.
+
+**File inventory (all under `SaveSync/` unless noted):** SaveSyncClient, DeviceIdentity, SaveLocator,
+SaveHashing, PlatformSaveProfiles, LocalSave, SafeFile, IConflictResolver, DialogConflictResolver,
+ConflictResolutionView.xaml(.cs), SaveSyncController, Converters/{ISaveConverter, IdentitySaveConverter,
+PsxSaveConverter, N64SaveConverter, ConverterRegistry}; Models/RomM/Sync/SyncModels.cs; edits to RomM.cs,
+RomM.csproj, Settings/{Settings.cs, EmulatorMapping.cs, SettingsView.xaml(.cs)}, extension.yaml (0.7.0).
+Docs: docs/save-sync/{CONTRACT, QA, README, PROGRESS}.md. Plan: .claude/plans/save-sync.plan.md (gitignored from commit).
+
+---
+
 ## Confirmed scope decisions
 - v1 = battery saves + savestates + screenshots (everything).
 - Converters in v1: identity/rename, GBA RTC, PSX memcard, **N64 split/join** (with round-trip safety net).
