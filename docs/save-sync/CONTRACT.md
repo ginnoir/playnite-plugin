@@ -104,9 +104,29 @@ Given `client_hash, client_updated_at, server_hash, server_updated_at, device_la
   server's timestamp and force uploads.
 - `device_last_synced_at` is tracked server-side and advanced whenever this `device_id` uploads or
   downloads that save (`upsert_sync`). So after a clean sync, an unchanged save returns `no_op`.
-- Pairing key is **`(rom_id, slot)`** — `emulator` does not split the diff. Slotted uploads get a
-  datetime tag server-side (`name [YYYY-MM-DD_HH-MM-SS].ext`), so they never collide with the
-  untagged null-slot save. **Policy: null-slot = single live battery save; slots = history/backups.**
+- Pairing key is **`(rom_id, slot)`** — `emulator` does not split the diff.
+
+### ❗ Slot semantics (REVISED — live-verified on 4.9.0-beta.2, supersedes the master-snapshot policy)
+
+The original policy ("null-slot = live save; slots = history") is **inverted** in the shipped 4.9
+protocol (`endpoints/sync.py`, verified live 2026-06-09):
+
+- **Negotiate only considers NAMED slots** (`get_saves(slot_not_null=True)`); null-slot rows are
+  **archival-only** — they never pair, never download, never conflict, on any device.
+- **The live battery-save lane is `slot = "default"`** (the same lane decky-romm-sync uses).
+  The plugin encodes this as `SyncSlots.Live`.
+- A slot accrues many rows (each slotted upload's stored `file_name` gets a server datetime tag
+  ` [YYYY-MM-DD_HH-MM-SS]`); negotiate pairs against the **newest row per (rom_id, slot)**.
+  Never derive local filenames from the server `file_name` — use the canonical name.
+- **Negotiate returns operations for the user's ENTIRE slotted library**, not just the saves the
+  client mentioned (downloads for every slotted save the device has never synced). A per-game sync
+  MUST filter operations to `(rom_id == game, slot == "default")` or it will pull every other
+  game's saves.
+- Client-deletion heuristic: a slotted save the client doesn't mention, that this device previously
+  synced, and that hasn't changed since, is treated as deleted-on-client → silently skipped (no
+  re-download). If it HAS changed since last sync, it comes back as a download.
+- `POST /api/sync/sessions/{id}/complete` with `play_sessions[]` verified live: 200, ingest
+  `{"status":"created"}` per entry; `save_slot` should be `"default"` too.
 
 ---
 
@@ -222,15 +242,28 @@ emulator)` + size + mtime.**
 > - **Item 5 (409 body) from the running version's source:** `{"detail": "Slot has a newer save since
 >   your last sync"}` / `{"detail": "Save has been updated since your last sync"}` (4.8.1 saves.py).
 
-Remaining to verify once the server runs 4.9.x:
-1. `updated_at` accepted format/precision in `negotiate` (server truncates play_session microseconds;
-   confirm save `updated_at` tolerance and that our UTC ISO-8601 `…Z` parses).
-2. ~~Multipart field names exactly~~ ✅ verified live (see above).
-3. Behavior of `overwrite=true` vs `PUT /{id}` for "keep local" conflict resolution (which advances
-   `updated_at`/sync correctly).
-4. `devices.write` scope — exercise device registration ("Test connection" button does this).
-5. Exact 409 body shape (live trigger) — source-verified on 4.8.1, re-confirm live on 4.9.
-6. Re-run `golden-hash-test.ps1` on 4.9.x and confirm the RAW case now matches too.
+> **Live verification round 2 — 2026-06-09 against `roms.ginnoir.com` upgraded to RomM 4.9.0-beta.2**
+> (tools: `verify-contract.ps1`, `probe-negotiate.ps1`, `slot-lane-test.ps1`). ALL ITEMS CLOSED:
+> 1. **✅ `updated_at` tolerance:** negotiate accepted `…Z` seconds, `…Z` fractional (µs), `+00:00`
+>    offset, and even tz-naive — all HTTP 200. We send `yyyy-MM-ddTHH:mm:ssZ`.
+> 2. **✅ Multipart** (round 1, unchanged on 4.9).
+> 3. **✅ `overwrite=true`** on the slot lane replaces the NEWEST row in the slot (same save id) and
+>    **advances this device's sync mark** — an immediately following negotiate with the same bytes
+>    returns `no_op`. This is the correct KeepLocal primitive. `PUT /api/saves/{id}` also works
+>    (replaces content, bumps `updated_at`) but targets a fixed id; POST+overwrite is preferred.
+> 4. **✅ `devices.write`:** register 201 + `device_id` UUID; same-fingerprint re-register 200 with
+>    the SAME id (idempotent, `allow_existing:true`); `DELETE /api/devices/{id}` exists → 204.
+> 5. **✅ 409 bodies (both live-triggered):** per-save `{"detail":"Save has been updated since your
+>    last sync"}`; slot-lane `{"detail":"Slot has a newer save since your last sync"}`.
+> 6. **✅ Golden hash on 4.9.0-beta.2: RAW *and* ZIP match** (the 4.8.1 NULL-hash bug is fixed; the
+>    server also backfilled all 27 legacy NULL hashes via a startup task, `errors=0`).
+>
+> **❗ Round-2 discovery — slot redesign (see §3):** negotiate ignores null-slot saves entirely
+> (`slot_not_null=True`; archival-only) and returns ops for the whole slotted library. The plugin
+> was reworked accordingly: live lane = `SyncSlots.Live` ("default"), per-game op filter
+> `(rom_id, slot)`, KeepBoth archives to a null-slot row with a unique `[conflict …]`-suffixed name.
+> Full slot-lane flow (upload→no_op→behind-back change→download→409→overwrite→no_op→complete with
+> playtime ingest) verified end-to-end live by `slot-lane-test.ps1`.
 
 ## 10. Net effect on plugin design
 The plugin does **not** implement conflict resolution math — RomM's `compare_save_state` does. The

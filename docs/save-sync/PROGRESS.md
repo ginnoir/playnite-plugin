@@ -5,37 +5,31 @@ Repo: fork `ginnoir/playnite-plugin`, branch `feat/save-sync`, upstream `rommapp
 
 ---
 
-## ▶ RESUME HERE (next session) — 2026-06-09 evening (tests green, golden hash run, server too old)
+## ▶ RESUME HERE (next session) — 2026-06-09 night (server on 4.9.0-beta.2, contract closed, slot-lane fix in)
 
-**State:** build GREEN, **RomM.Tests suite added — 44/44 passing** (`dotnet test RomM.Tests\RomM.Tests.csproj`),
-golden hash test executed against the live server. **Blocking discovery: the user's RomM is 4.8.1, which
-has NO `/api/sync/*` endpoints** (negotiate protocol ships in 4.9.0-beta.x) **and a server bug that stores
-`content_hash = NULL` for all non-zip saves** (fixed in 4.9.0-beta.2). Full details: CONTRACT.md §9
-"Live verification round 1". The zip-composite golden hash MATCHED exactly (our algorithm is correct);
-the raw case can't be verified until the server runs 4.9.
+**State:** `roms.ginnoir.com` UPGRADED to **RomM 4.9.0-beta.2** (GitOps: ginnoir/homelabstack commit
+`225078af` pins the image tag; Portainer auto-redeployed; alembic migrations clean; server backfilled
+all 27 NULL content_hashes at startup). Build GREEN, 44/44 tests, **golden hash RAW+ZIP both MATCH**.
+**CONTRACT.md §9: every item verified live (round 2) — see the round-2 block.**
 
-**Code added this session (commits `82d8c25` + next):**
-- `RomM.Tests/` — xunit net462 suite (hash vectors, zip composite, N64 round-trip, PSX headers, GBA,
-  registry). `RomM.csproj`: `InternalsVisibleTo` + `DefaultItemExcludes=RomM.Tests\**` (root-level
-  project was globbing test sources into the WPF markup compile).
-- `SaveSyncController.SyncGame`: negotiate-404 now disambiguates stale device (body contains "Device")
-  from missing endpoint (pre-4.9 server) → clear "requires RomM 4.9 or newer" message.
-- `SaveSyncClient.CheckSyncSupported()` (GET /api/sync/sessions probe) + settings "Test connection"
-  now warns when the server is pre-4.9.
-- `docs/save-sync/tools/golden-hash-test.ps1` — repeatable golden test (uploads raw+zip fixtures to a
-  saveless rom, compares against the SHIPPED SaveHashing via reflection, deletes the test saves).
+**❗ Round-2 discovery + fix (this session):** 4.9's shipped negotiate only pairs NAMED slots
+(null-slot rows are archival-only) and returns ops for the user's whole slotted library. Plugin
+reworked: `SyncSlots.Live = "default"` lane everywhere, per-game `(rom_id, slot)` op filter in
+`SyncGame`, ForcePush/ForcePull/KeepLocal on the live slot, KeepBoth archives the losing local copy
+to a null-slot row named `<base> [conflict <utc>].<ext>`. End-to-end API flow verified live by
+`docs/save-sync/tools/slot-lane-test.ps1` (no_op → download → 409 → overwrite → no_op → complete
+with playtime ingest `created`). New tools: `verify-contract.ps1`, `probe-negotiate.ps1`,
+`slot-lane-test.ps1` (all read the plugin config; all clean up after themselves).
 
 **Do this, in order:**
-1. ~~Build~~ ✓ 2. ~~Unit tests~~ ✓ 44/44 3. ~~Golden hash (zip)~~ ✓ MATCH (raw blocked by 4.8.1 bug)
-4. **DECISION (user):** upgrade `roms.ginnoir.com` to RomM `4.9.0-beta.2`+ (sync endpoints + hash fix)
-   — it's a Docker deploy (Portainer available). Without it, end-to-end sync cannot be tested.
-5. After upgrade: re-run `golden-hash-test.ps1` (expect RAW match too), exercise "Test connection"
-   (devices.write + sync probe), then work the manual QA matrix in `docs/save-sync/QA.md`.
-6. Re-verify remaining CONTRACT.md §9 items (1, 3, 4, 5, 6) against 4.9.x.
-7. When green, open the upstream PR (held intentionally):
-   `gh pr create --repo rommapp/playnite-plugin --head ginnoir:feat/save-sync --title "feat: save & state sync with RomM" --draft --body-file <notes>`
-   Note in the PR that save sync requires RomM >= 4.9 (and that 4.8.x has the content_hash bug worth
-   reporting upstream to rommapp/romm if not already fixed on master).
+1. ~~Server upgrade~~ ✓ 2. ~~Golden hash raw+zip~~ ✓ 3. ~~CONTRACT §9 items 1,3,4,5~~ ✓
+4. **Manual QA matrix** (`docs/save-sync/QA.md`): user drives Playnite/emulators; verify server
+   state via API + plugin log `%AppData%\Playnite\playnite.log`. Deploy the fresh build into
+   Playnite first.
+5. Push `feat/save-sync` to fork (origin), then draft upstream PR (ASK USER first — public):
+   `gh pr create --repo rommapp/playnite-plugin --head ginnoir:feat/save-sync --title "feat: save & state sync with RomM" --draft`
+   PR body must note save sync requires **RomM >= 4.9** (4.8.x: no /api/sync/*, NULL raw hashes).
+6. Housekeeping when done: revert homelabstack pin to `rommapp/romm:4` once 4.9.0 stable ships.
 
 **Authoring-env constraints to remember:** GateGuard fact-forcing hook gates new-file Write + Bash + .cs/.csproj/.yaml/.md-new edits (present 4 facts, retry; edits to existing .md NOT gated). No SDK/MSBuild/VS here.
 

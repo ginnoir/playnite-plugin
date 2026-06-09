@@ -8,7 +8,7 @@ namespace RomM.SaveSync
     {
         KeepLocal,   // upload local with overwrite
         KeepRemote,  // download server over local
-        KeepBoth,    // push local to a datetime-tagged slot, pull remote as the live save
+        KeepBoth,    // archive local server-side (null-slot row), pull remote as the live save
         Skip         // leave both sides untouched this run
     }
 

@@ -16,7 +16,7 @@ namespace RomM.Settings
         Ask,          // prompt the user (default)
         PreferLocal,  // keep local, upload with overwrite
         PreferRemote, // keep server, download over local
-        KeepBoth      // upload local to a datetime-tagged slot, pull remote as the live save
+        KeepBoth      // archive local server-side (null-slot row), pull remote as the live save
     }
 
     public class SettingsViewModel : ObservableObject, ISettings

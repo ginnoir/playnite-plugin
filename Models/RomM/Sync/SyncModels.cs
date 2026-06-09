@@ -16,6 +16,18 @@ namespace RomM.Models.RomM.Sync
         public const string NoOp = "no_op";
     }
 
+    /// <summary>
+    /// Save slot lanes (RomM >= 4.9.0-beta.2). Negotiate pairs on (rom_id, slot) and only
+    /// considers NAMED slots; null-slot rows are archival-only server-side and never sync.
+    /// The live battery save therefore lives in the "default" slot (same lane decky-romm-sync
+    /// uses). Slotted uploads get a server-side datetime tag appended to the stored file_name.
+    /// </summary>
+    public static class SyncSlots
+    {
+        /// <summary>The shared live battery-save lane.</summary>
+        public const string Live = "default";
+    }
+
     /// <summary>RomM SyncMode. The plugin always registers as <see cref="Api"/>.</summary>
     public static class SyncModes
     {

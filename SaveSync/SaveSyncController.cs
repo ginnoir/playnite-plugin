@@ -125,7 +125,7 @@ namespace RomM.SaveSync
                 {
                     RomId = romId,
                     FileName = canonicalName,
-                    Slot = null,
+                    Slot = SyncSlots.Live,
                     Emulator = null,
                     ContentHash = SaveHashing.ComputeContentHash(canonicalBytes),
                     UpdatedAt = newestUtc,
@@ -180,8 +180,12 @@ namespace RomM.SaveSync
             {
                 if (ct.IsCancellationRequested) break;
 
-                // We manage only the live (null-slot) battery save; slotted rows are history.
-                if (!string.IsNullOrEmpty(op.Slot))
+                // RomM >= 4.9 negotiate returns operations for the user's ENTIRE slotted
+                // library (every rom, every named slot), and only named slots take part in
+                // sync — null-slot rows are archival-only server-side. Execute only this
+                // game's live-slot ops; the rest belong to other games or history lanes.
+                if (op.RomId != romId ||
+                    !string.Equals(op.Slot, SyncSlots.Live, StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -214,7 +218,7 @@ namespace RomM.SaveSync
                         new SyncPlaySessionEntry
                         {
                             RomId = romId,
-                            SaveSlot = null,
+                            SaveSlot = SyncSlots.Live,
                             StartTime = startUtc,
                             EndTime = endUtc,
                             DurationMs = (long)(endUtc - startUtc).TotalMilliseconds,
@@ -314,6 +318,15 @@ namespace RomM.SaveSync
             catch { return null; }
         }
 
+        private static string BuildConflictArchiveName(string canonicalName, DateTime localUpdatedUtc)
+        {
+            // "[conflict ...]" deliberately differs from the server's own " [YYYY-MM-DD_HH-MM-SS]"
+            // slot tag, so RomM's tag-stripping regex never rewrites it.
+            var stem = Path.GetFileNameWithoutExtension(canonicalName);
+            var ext = Path.GetExtension(canonicalName);
+            return $"{stem} [conflict {localUpdatedUtc:yyyy-MM-dd_HH-mm-ss}]{ext}";
+        }
+
         private static string SanitizeTag(string emulatorName)
         {
             if (string.IsNullOrWhiteSpace(emulatorName)) return null;
@@ -348,7 +361,7 @@ namespace RomM.SaveSync
             return ForceDirection(game, push: true, ct);
         }
 
-        /// <summary>Manual "Pull RomM → local": download the server's live (null-slot) save over local.</summary>
+        /// <summary>Manual "Pull RomM → local": download the server's live-slot save over local.</summary>
         public SyncResult ForcePull(Game game, CancellationToken ct)
         {
             return ForceDirection(game, push: false, ct);
@@ -381,13 +394,16 @@ namespace RomM.SaveSync
                 var canonical = converter.ToCanonical(nativeFiles, ctx);
                 var bytes = canonical?.Bytes ?? ConverterHelpers.PickPrimary(nativeFiles).Bytes;
                 var name = canonical?.Name ?? $"{paths.RomBaseName}.{profile.CanonicalSaveExtension}";
-                var up = client.UploadSave(romId, bytes, name, emulator: null, slot: null, deviceId: deviceId, overwrite: true);
+                var up = client.UploadSave(romId, bytes, name, emulator: null, slot: SyncSlots.Live, deviceId: deviceId, overwrite: true);
                 if (up.Ok) { result.Uploaded++; result.Ran = true; } else result.Failed++;
             }
             else
             {
-                var saves = client.GetSaves(romId, deviceId, slot: null);
-                var live = saves.Ok ? saves.Value.Where(s => string.IsNullOrEmpty(s.Slot)).OrderByDescending(s => s.UpdatedAt).FirstOrDefault() : null;
+                var saves = client.GetSaves(romId, deviceId, slot: SyncSlots.Live);
+                var live = saves.Ok
+                    ? saves.Value.Where(s => string.Equals(s.Slot, SyncSlots.Live, StringComparison.OrdinalIgnoreCase))
+                        .OrderByDescending(s => s.UpdatedAt).FirstOrDefault()
+                    : null;
                 if (live == null) { result.Message = "No server save to pull."; return result; }
                 DownloadAndWrite(client, live.Id, deviceId, null, paths, profile, converter, targetNativeExt, romId);
                 result.Downloaded++; result.Ran = true;
@@ -410,7 +426,7 @@ namespace RomM.SaveSync
                 case SyncActions.Upload:
                     if (canonicalBytes != null)
                     {
-                        var up = client.UploadSave(romId, canonicalBytes, canonicalName, emulator: null, slot: null,
+                        var up = client.UploadSave(romId, canonicalBytes, canonicalName, emulator: null, slot: SyncSlots.Live,
                             deviceId: deviceId, sessionId: sessionId, overwrite: false,
                             autocleanup: Settings.AutoCleanupSlots, autocleanupLimit: Settings.AutoCleanupLimit);
                         if (up.Ok) result.Uploaded++;
@@ -456,7 +472,7 @@ namespace RomM.SaveSync
                 case ConflictChoice.KeepLocal:
                     if (canonicalBytes != null)
                     {
-                        client.UploadSave(romId, canonicalBytes, canonicalName, emulator: null, slot: null,
+                        client.UploadSave(romId, canonicalBytes, canonicalName, emulator: null, slot: SyncSlots.Live,
                             deviceId: deviceId, sessionId: sessionId, overwrite: true);
                     }
                     break;
@@ -469,10 +485,13 @@ namespace RomM.SaveSync
                     break;
 
                 case ConflictChoice.KeepBoth:
-                    // Push local into a tagged slot (server datetime-tags it), then pull remote as live.
+                    // Preserve the losing local copy server-side as a null-slot row (archival-only
+                    // in RomM >= 4.9: it never re-enters negotiate on any device), uniquely named so
+                    // successive conflicts don't overwrite each other; then pull remote as live.
                     if (canonicalBytes != null)
                     {
-                        client.UploadSave(romId, canonicalBytes, canonicalName, emulator: null, slot: "conflict",
+                        var archiveName = BuildConflictArchiveName(canonicalName, newestUtc);
+                        client.UploadSave(romId, canonicalBytes, archiveName, emulator: null, slot: null,
                             deviceId: deviceId, sessionId: sessionId, overwrite: false);
                     }
                     if (op.SaveId.HasValue)
