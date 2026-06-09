@@ -1,4 +1,6 @@
-﻿using System;
+﻿using Playnite.SDK;
+using RomM.SaveSync;
+using System;
 using System.Diagnostics;
 using System.Linq;
 using System.Net;
@@ -107,6 +109,62 @@ namespace RomM.Settings
             {
                 button.IsEnabled = true;
                 button.Content = originalContent;
+            }
+        }
+
+        private async void Click_TestSyncConnection(object sender, RoutedEventArgs e)
+        {
+            var settings = SettingsViewModel.Instance;
+            var dialogs = settings.PlayniteAPI.Dialogs;
+            var host = settings.RomMHost?.Trim().TrimEnd('/');
+
+            if (string.IsNullOrWhiteSpace(host) || !settings.HasAnyAuth)
+            {
+                dialogs.ShowMessage("Set the RomM host and a valid API token (or username/password) first.", "RomM Save Sync");
+                return;
+            }
+
+            var button = (Button)sender;
+            var original = button.Content;
+            button.IsEnabled = false;
+            button.Content = "Working...";
+
+            try
+            {
+                await System.Threading.Tasks.Task.Run(() =>
+                {
+                    var logger = LogManager.GetLogger();
+                    var client = new SaveSyncClient(host, logger);
+
+                    var readable = client.CheckDevicesReadable();
+                    if (!readable.Ok)
+                    {
+                        var hint = readable.Forbidden || readable.Unauthorized
+                            ? " The token is likely missing the 'devices.read'/'devices.write' scopes."
+                            : "";
+                        dialogs.ShowMessage($"Could not reach the device API (HTTP {(int)readable.Status}).{hint}", "RomM Save Sync");
+                        return;
+                    }
+
+                    var deviceId = DeviceIdentity.ReRegister(client, settings, logger);
+                    if (string.IsNullOrEmpty(deviceId))
+                    {
+                        dialogs.ShowMessage("Device registration failed. Ensure the token has the 'devices.write' scope.", "RomM Save Sync");
+                    }
+                    else
+                    {
+                        dialogs.ShowMessage($"Connected. Registered as device '{settings.DeviceName}'.", "RomM Save Sync");
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                dialogs.ShowMessage($"Save-sync test failed: {ex.Message}", "RomM Save Sync");
+            }
+            finally
+            {
+                button.IsEnabled = true;
+                button.Content = original;
             }
         }
 

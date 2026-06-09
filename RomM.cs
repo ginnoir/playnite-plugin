@@ -6,6 +6,7 @@ using Playnite.SDK.Models;
 using Playnite.SDK.Plugins;
 using RomM.Games;
 using RomM.Downloads;
+using RomM.SaveSync;
 using RomM.VersionSelector;
 using RomM.Models.RomM.Collection;
 using RomM.Models.RomM.Platform;
@@ -93,6 +94,10 @@ namespace RomM
         internal RomMDownloadsSidebarItem DownloadsSidebar { get; private set; }
         private readonly DownloadQueueViewModel downloadsVm;
 
+        // Save sync (Task 8): one controller; per-game launch timestamps drive playtime ingest on stop.
+        private readonly SaveSyncController saveSync;
+        private readonly ConcurrentDictionary<Guid, DateTime> gameStartTimesUtc = new ConcurrentDictionary<Guid, DateTime>();
+
         // Implementing Client adds ability to open it via special menu in playnite
         public override LibraryClient Client { get; } = new RomMClient();
 
@@ -116,6 +121,47 @@ namespace RomM
             {
                 DownloadsSidebar = new RomMDownloadsSidebarItem(this);
             }
+
+            saveSync = new SaveSyncController(this);
+        }
+
+        /// <summary>Pick the conflict resolver for an automatic (lifecycle) sync. "Ask" uses the dialog
+        /// in desktop mode, otherwise falls back to the zero-data-loss KeepBoth policy.</summary>
+        private IConflictResolver CreateResolver()
+        {
+            if (Settings.SaveConflictPolicy == ConflictPolicy.Ask &&
+                Playnite.ApplicationInfo.Mode == ApplicationMode.Desktop)
+            {
+                return new DialogConflictResolver(Playnite);
+            }
+            return new PolicyConflictResolver(Settings.SaveConflictPolicy);
+        }
+
+        /// <summary>Run a save+state sync for one game on a background thread (never block the UI/launch).</summary>
+        private void RunSyncAsync(Game game, DateTime? sessionStartUtc, IConflictResolver resolver)
+        {
+            if (!Settings.EnableSaveSync && !Settings.EnableStateSync)
+            {
+                return;
+            }
+            Task.Run(() =>
+            {
+                try
+                {
+                    if (Settings.EnableSaveSync)
+                    {
+                        saveSync.SyncGame(game, resolver, CancellationToken.None, sessionStartUtc);
+                    }
+                    if (Settings.EnableStateSync)
+                    {
+                        saveSync.SyncStates(game, CancellationToken.None);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, $"Save sync failed for '{game.Name}'.");
+                }
+            });
         }
 
         private string CombineUrl(string baseUrl, string relativePath)
@@ -850,8 +896,56 @@ namespace RomM
                         }
                     });
                 }
+
+                if (Settings.EnableSaveSync || Settings.EnableStateSync)
+                {
+                    var games = args.Games.Where(g => g.PluginId == PluginId).ToList();
+
+                    gameMenuItems.Add(new GameMenuItem
+                    {
+                        MenuSection = "RomM Save Sync",
+                        Description = "Sync saves now",
+                        Action = _ => RunSaveAction(games, "Sync", g => saveSync.SyncGame(g, CreateResolver(), CancellationToken.None)),
+                    });
+                    gameMenuItems.Add(new GameMenuItem
+                    {
+                        MenuSection = "RomM Save Sync",
+                        Description = "Push local save → RomM",
+                        Action = _ => RunSaveAction(games, "Push", g => saveSync.ForcePush(g, CancellationToken.None)),
+                    });
+                    gameMenuItems.Add(new GameMenuItem
+                    {
+                        MenuSection = "RomM Save Sync",
+                        Description = "Pull RomM save → local",
+                        Action = _ => RunSaveAction(games, "Pull", g => saveSync.ForcePull(g, CancellationToken.None)),
+                    });
+                }
             }
             return gameMenuItems;
+        }
+
+        /// <summary>Run a save-sync menu action for the selected games on a background thread, with a summary notification.</summary>
+        private void RunSaveAction(List<Game> games, string label, Func<Game, SyncResult> action)
+        {
+            Task.Run(() =>
+            {
+                foreach (var game in games)
+                {
+                    try
+                    {
+                        var r = action(game);
+                        if (!string.IsNullOrEmpty(r?.Message))
+                        {
+                            Playnite.Notifications.Add(game.GameId + ":sync", $"{game.Name}: {r.Message}", NotificationType.Info);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error(ex, $"{label} save action failed for '{game.Name}'.");
+                        Playnite.Notifications.Add(game.GameId + ":syncerr", $"{game.Name}: {label} failed — {ex.Message}", NotificationType.Error);
+                    }
+                }
+            });
         }
 
         public override IEnumerable<InstallController> GetInstallActions(GetInstallActionsArgs args)
@@ -950,6 +1044,63 @@ namespace RomM
             if (args.Game.PluginId == PluginId && Settings.NotifyOnInstallComplete)
             {
                 Playnite.Notifications.Add(args.Game.GameId, $"Download of \"{args.Game.Name}\" is complete", NotificationType.Info);
+            }
+
+            // Seed the freshly-installed game with its RomM save/state (pull only; nothing local to push yet).
+            if (args.Game.PluginId == PluginId)
+            {
+                RunSyncAsync(args.Game, null, CreateResolver());
+            }
+        }
+
+        public override void OnGameStarting(OnGameStartingEventArgs args)
+        {
+            base.OnGameStarting(args);
+
+            // Pull the latest save BEFORE the emulator opens it — synchronous so it lands in time.
+            if (args.Game.PluginId == PluginId && Settings.EnableSaveSync && Settings.SyncOnGameStart)
+            {
+                try
+                {
+                    saveSync.SyncGame(args.Game, CreateResolver(), CancellationToken.None);
+                    if (Settings.EnableStateSync)
+                    {
+                        saveSync.SyncStates(args.Game, CancellationToken.None);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, $"Pre-launch save sync failed for '{args.Game.Name}'.");
+                }
+            }
+        }
+
+        public override void OnGameStarted(OnGameStartedEventArgs args)
+        {
+            base.OnGameStarted(args);
+
+            if (args.Game.PluginId == PluginId)
+            {
+                gameStartTimesUtc[args.Game.Id] = DateTime.UtcNow;
+            }
+        }
+
+        public override void OnGameStopped(OnGameStoppedEventArgs args)
+        {
+            base.OnGameStopped(args);
+
+            if (args.Game.PluginId != PluginId)
+            {
+                return;
+            }
+
+            gameStartTimesUtc.TryRemove(args.Game.Id, out var startUtc);
+
+            // Push the save the player just produced (+ playtime). Async so we don't stall Playnite's UI.
+            if (Settings.SyncOnGameStop)
+            {
+                var sessionStart = startUtc == default(DateTime) ? (DateTime?)null : startUtc;
+                RunSyncAsync(args.Game, sessionStart, CreateResolver());
             }
         }
 

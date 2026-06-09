@@ -9,6 +9,16 @@ using System.Xml.Serialization;
 
 namespace RomM.Settings
 {
+    /// <summary>How the plugin locates an emulator's per-game save/state files. See SaveSync/SaveLocator.cs.</summary>
+    public enum SaveLocatorStrategy
+    {
+        Auto,               // infer from the emulator (RetroArch cfg, else next-to-ROM)
+        RetroArch,          // parse retroarch.cfg savefile/savestate directories
+        NextToRom,          // saves sit beside the ROM, matched by extension
+        EmulatorSaveFolder, // a fixed save folder under the emulator install dir
+        Custom              // use SaveDirOverride verbatim
+    }
+
     public class EmulatorMapping : ObservableObject
     {
         public EmulatorMapping()
@@ -29,6 +39,19 @@ namespace RomM.Settings
         [DefaultValue(false)]
         [JsonProperty(DefaultValueHandling = DefaultValueHandling.Populate)]
         public bool UseM3u { get; set; }
+
+        // ---- Save sync (Task 3) ----
+
+        [DefaultValue(false)]
+        [JsonProperty(DefaultValueHandling = DefaultValueHandling.Populate)]
+        public bool SyncSaves { get; set; }
+
+        [DefaultValue(SaveLocatorStrategy.Auto)]
+        [JsonProperty(DefaultValueHandling = DefaultValueHandling.Populate)]
+        public SaveLocatorStrategy SaveStrategy { get; set; }
+
+        /// <summary>Explicit save directory (supports the {PlayniteDir} portable token). Required for <see cref="SaveLocatorStrategy.Custom"/>.</summary>
+        public string SaveDirOverride { get; set; }
 
         [JsonIgnore]
         public Emulator Emulator
@@ -102,6 +125,20 @@ namespace RomM.Settings
             {
                 var playnite = SettingsViewModel.Instance.PlayniteAPI;
                 return playnite.Paths.IsPortable ? DestinationPath?.Replace(ExpandableVariables.PlayniteDirectory, playnite.Paths.ApplicationPath) : DestinationPath;
+            }
+        }
+
+        /// <summary><see cref="SaveDirOverride"/> with the {PlayniteDir} portable token expanded, mirroring <see cref="DestinationPathResolved"/>.</summary>
+        [JsonIgnore]
+        [XmlIgnore]
+        public string SaveDirOverrideResolved
+        {
+            get
+            {
+                var playnite = SettingsViewModel.Instance.PlayniteAPI;
+                return playnite.Paths.IsPortable
+                    ? SaveDirOverride?.Replace(ExpandableVariables.PlayniteDirectory, playnite.Paths.ApplicationPath)
+                    : SaveDirOverride;
             }
         }
 

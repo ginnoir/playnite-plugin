@@ -21,6 +21,16 @@
                 </DataTrigger>
             </Style.Triggers>
         </Style>
+        <ObjectDataProvider x:Key="ConflictPolicyValues" MethodName="GetValues" ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="local:ConflictPolicy"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
+        <ObjectDataProvider x:Key="SaveStrategyValues" MethodName="GetValues" ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="local:SaveLocatorStrategy"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
     </UserControl.Resources>
     <DockPanel Margin="20">
         <ScrollViewer DockPanel.Dock="Top">
@@ -158,6 +168,10 @@
                             <DataGridCheckBoxColumn Header="Auto-extract" Binding="{Binding AutoExtract}" />
                             <DataGridCheckBoxColumn Header="Use M3U File" Binding="{Binding UseM3u}" />
                             <DataGridCheckBoxColumn Header="Enabled" Binding="{Binding Enabled}" />
+                            <DataGridCheckBoxColumn Header="Sync saves" Binding="{Binding SyncSaves}" />
+                            <DataGridComboBoxColumn Header="Save location" SelectedItemBinding="{Binding SaveStrategy}"
+                                                    ItemsSource="{Binding Source={StaticResource SaveStrategyValues}}" />
+                            <DataGridTextColumn Header="Save dir override" Binding="{Binding SaveDirOverride}" />
                             <DataGridTextColumn Header="Mapping ID" IsReadOnly="True" Binding="{Binding MappingId}" />
                         </DataGrid.Columns>
                     </DataGrid>
@@ -197,6 +211,46 @@
                     <TextBox x:Name="PathTo7zText" Grid.Row="0" Grid.Column="1" Margin="3,2,0,2" Text="{Binding PathTo7z, Mode=TwoWay}" />
                     <Button Name="Browse7z" Click="Click_Browse7zDestination" Grid.Row="0" Grid.Column="2">
                         <Label Content="Browse" Grid.Row="0" Grid.Column="0" Margin="0,0,5,5"/>
+                    </Button>
+                </Grid>
+
+                <Label Content="Save Sync" FontWeight="Bold" Margin="0,10,0,0" />
+                <Separator Margin="0,5,0,10" />
+                <CheckBox IsChecked="{Binding EnableSaveSync, Mode=TwoWay}" Margin="0,0,0,8">
+                    <TextBlock Text="Sync battery saves with RomM (per emulator, enable 'Sync saves' above)" TextWrapping="Wrap"/>
+                </CheckBox>
+                <CheckBox IsChecked="{Binding EnableStateSync, Mode=TwoWay}" Margin="0,0,0,8">
+                    <TextBlock Text="Sync savestates (opaque, per-emulator — never converted)" TextWrapping="Wrap"/>
+                </CheckBox>
+                <CheckBox IsChecked="{Binding SyncScreenshots, Mode=TwoWay}" Margin="0,0,0,8">
+                    <TextBlock Text="Include savestate screenshots" TextWrapping="Wrap"/>
+                </CheckBox>
+                <CheckBox IsChecked="{Binding SyncOnGameStart, Mode=TwoWay}" Margin="0,0,0,8">
+                    <TextBlock Text="Pull latest save before launching a game" TextWrapping="Wrap"/>
+                </CheckBox>
+                <CheckBox IsChecked="{Binding SyncOnGameStop, Mode=TwoWay}" Margin="0,0,0,8">
+                    <TextBlock Text="Push save after closing a game (and record playtime)" TextWrapping="Wrap"/>
+                </CheckBox>
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="220"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Label Grid.Column="0" Content="On conflict:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <ComboBox Grid.Column="1" ItemsSource="{Binding Source={StaticResource ConflictPolicyValues}}"
+                              SelectedItem="{Binding SaveConflictPolicy, Mode=TwoWay}" />
+                </Grid>
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="220"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Label Grid.Column="0" Content="Device name:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBox Grid.Column="1" Text="{Binding DeviceName, Mode=TwoWay}" VerticalAlignment="Center"/>
+                    <Button Grid.Column="2" Name="TestSyncConnection" Click="Click_TestSyncConnection" Margin="8,0,0,0">
+                        <Label Content="Test connection / Register device"/>
                     </Button>
                 </Grid>
 

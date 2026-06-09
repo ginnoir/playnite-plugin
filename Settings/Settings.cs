@@ -10,6 +10,15 @@ using System.Text.RegularExpressions;
 
 namespace RomM.Settings
 {
+    /// <summary>How to resolve a save the RomM server reports as a conflict (both sides changed).</summary>
+    public enum ConflictPolicy
+    {
+        Ask,          // prompt the user (default)
+        PreferLocal,  // keep local, upload with overwrite
+        PreferRemote, // keep server, download over local
+        KeepBoth      // upload local to a datetime-tagged slot, pull remote as the live save
+    }
+
     public class SettingsViewModel : ObservableObject, ISettings
     {
         private readonly Plugin _plugin;
@@ -64,6 +73,21 @@ namespace RomM.Settings
         public string PathTo7z { get; set; } = "";
         public bool MergeRevisions { get; set; } = false;
 
+        // ---- Save sync (Task 3) ----
+        public bool EnableSaveSync { get; set; } = false;
+        public bool EnableStateSync { get; set; } = false;
+        public bool SyncScreenshots { get; set; } = true;
+        public bool SyncOnGameStart { get; set; } = true;
+        public bool SyncOnGameStop { get; set; } = true;
+        public bool ReconcileOnStartup { get; set; } = false;
+        public ConflictPolicy SaveConflictPolicy { get; set; } = ConflictPolicy.Ask;
+        public bool AutoCleanupSlots { get; set; } = true;
+        public int AutoCleanupLimit { get; set; } = 10;
+
+        // Stable RomM device identity (registered once, persisted in config.json). See SaveSync/DeviceIdentity.cs.
+        public string DeviceId { get; set; } = "";
+        public string DeviceName { get; set; } = "";
+
         public SettingsViewModel()
         {
         }
@@ -92,6 +116,17 @@ namespace RomM.Settings
                 Use7z = savedSettings.Use7z;
                 PathTo7z = savedSettings.PathTo7z;
                 MergeRevisions = savedSettings.MergeRevisions;
+                EnableSaveSync = savedSettings.EnableSaveSync;
+                EnableStateSync = savedSettings.EnableStateSync;
+                SyncScreenshots = savedSettings.SyncScreenshots;
+                SyncOnGameStart = savedSettings.SyncOnGameStart;
+                SyncOnGameStop = savedSettings.SyncOnGameStop;
+                ReconcileOnStartup = savedSettings.ReconcileOnStartup;
+                SaveConflictPolicy = savedSettings.SaveConflictPolicy;
+                AutoCleanupSlots = savedSettings.AutoCleanupSlots;
+                AutoCleanupLimit = savedSettings.AutoCleanupLimit;
+                DeviceId = savedSettings.DeviceId ?? "";
+                DeviceName = savedSettings.DeviceName ?? "";
             }
             
             if (Mappings == null)
@@ -131,6 +166,12 @@ namespace RomM.Settings
             // This method should save settings made to Option1 and Option2.
             SavePluginSettings(this);
             HttpClientSingleton.ConfigureAuth(this);
+        }
+
+        /// <summary>Persist current settings to config.json outside the edit flow (e.g. after registering a device).</summary>
+        internal void Save()
+        {
+            SavePluginSettings(this);
         }
 
         private void SavePluginSettings<SettingsViewModel>(SettingsViewModel settings)
