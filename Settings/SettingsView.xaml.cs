@@ -153,7 +153,15 @@ namespace RomM.Settings
                     }
                     else
                     {
-                        dialogs.ShowMessage($"Connected. Registered as device '{settings.DeviceName}'.", "RomM Save Sync");
+                        // Device endpoints exist on older servers too, so a successful registration
+                        // alone doesn't prove sync will work — probe /api/sync explicitly.
+                        var syncProbe = client.CheckSyncSupported();
+                        var syncNote = syncProbe.Ok
+                            ? " Server supports save sync."
+                            : syncProbe.NotFound
+                                ? "\n\nWARNING: this RomM server does not support save sync — it requires RomM 4.9 or newer."
+                                : $"\n\nSync probe returned HTTP {(int)syncProbe.Status}; save sync may not work.";
+                        dialogs.ShowMessage($"Connected. Registered as device '{settings.DeviceName}'.{syncNote}", "RomM Save Sync");
                     }
                 });
             }

@@ -196,14 +196,41 @@ emulator)` + size + mtime.**
 ---
 
 ## 9. ⚠️LIVE items to re-verify against the user's instance before release
+
+> **Live verification round 1 — 2026-06-09 against `roms.ginnoir.com` (RomM 4.8.1):**
+> - **❗ RomM < 4.9 has NO `/api/sync/*` endpoints.** `POST /api/sync/negotiate` and
+>   `GET /api/sync/sessions` both 404 on 4.8.1 (confirmed live + absent from the 4.8.1 source tree).
+>   The negotiate protocol ships in **4.9.0-beta.x** (`backend/endpoints/sync.py` +
+>   `handler/sync/comparison.py` present in tag `4.9.0-beta.2`). The plugin now detects this:
+>   endpoint-404 (generic `"Not Found"` body) → "requires RomM 4.9+" message; device-404
+>   (`"Device with ID … not found"`) → re-register. Settings "Test connection" probes
+>   `GET /api/sync/sessions` and warns on pre-4.9 servers.
+> - **❗ 4.8.1 server bug: raw (non-zip) saves get `content_hash = NULL`.** `_scan_asset` passes an
+>   absolute path to `compute_content_hash`; the raw branch goes through `stream_file → validate_path`
+>   which rejects absolute paths, so the exception handler returns `None`. The zip branch opens the
+>   path directly and works. **Fixed in 4.9.0-beta.2** (paths made relative throughout).
+> - **✅ Golden hash test (zip composite): MATCH.** A 2-entry zip uploaded to 4.8.1 returned exactly
+>   our `SaveHashing.ComputeContentHash` value (per-entry md5, ordinal name sort, `\n` join, md5 of
+>   UTF-8). Raw-path MD5 is covered by RFC 1321 vectors in `RomM.Tests`. Repeatable via
+>   `docs/save-sync/tools/golden-hash-test.ps1`.
+> - **✅ Item 2 verified live:** multipart field `saveFile` + query-string `rom_id` accepted;
+>   `SaveSchema` response carried `id/file_name/file_size_bytes/content_hash/slot/emulator`.
+>   `POST /api/saves/delete {"saves":[ids]}` works.
+> - **Partially verified item 4:** the user's token has `devices.read` (GET /api/devices 200),
+>   `assets.write` (upload + delete 200), `assets.read` (GET saves 200). `devices.write`
+>   (device registration) not yet exercised.
+> - **Item 5 (409 body) from the running version's source:** `{"detail": "Slot has a newer save since
+>   your last sync"}` / `{"detail": "Save has been updated since your last sync"}` (4.8.1 saves.py).
+
+Remaining to verify once the server runs 4.9.x:
 1. `updated_at` accepted format/precision in `negotiate` (server truncates play_session microseconds;
    confirm save `updated_at` tolerance and that our UTC ISO-8601 `…Z` parses).
-2. Multipart field names exactly (`saveFile`, `screenshotFile`, `stateFile`) and that query params (not
-   form fields) carry `rom_id/emulator/slot/device_id/session_id/overwrite`.
+2. ~~Multipart field names exactly~~ ✅ verified live (see above).
 3. Behavior of `overwrite=true` vs `PUT /{id}` for "keep local" conflict resolution (which advances
    `updated_at`/sync correctly).
-4. Whether the user's token actually has the four scopes (older tokens predate `devices.*`).
-5. Exact 409 body shape so we can detect-and-branch reliably.
+4. `devices.write` scope — exercise device registration ("Test connection" button does this).
+5. Exact 409 body shape (live trigger) — source-verified on 4.8.1, re-confirm live on 4.9.
+6. Re-run `golden-hash-test.ps1` on 4.9.x and confirm the RAW case now matches too.
 
 ## 10. Net effect on plugin design
 The plugin does **not** implement conflict resolution math — RomM's `compare_save_state` does. The

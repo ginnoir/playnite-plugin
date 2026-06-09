@@ -119,6 +119,16 @@ namespace RomM.SaveSync
 
         // ---- Sync negotiation ----------------------------------------------
 
+        /// <summary>
+        /// Probe for the /api/sync endpoints, which only exist on RomM >= 4.9.
+        /// 200 = supported; 404 = server too old for save sync.
+        /// </summary>
+        public ApiResult<bool> CheckSyncSupported()
+        {
+            var req = new HttpRequestMessage(HttpMethod.Get, Url("api/sync/sessions"));
+            return Send(req, _ => true);
+        }
+
         public ApiResult<RomMSyncNegotiateResponse> Negotiate(SyncNegotiatePayload payload)
         {
             var req = new HttpRequestMessage(HttpMethod.Post, Url("api/sync/negotiate")) { Content = JsonBody(payload) };

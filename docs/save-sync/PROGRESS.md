@@ -5,27 +5,37 @@ Repo: fork `ginnoir/playnite-plugin`, branch `feat/save-sync`, upstream `rommapp
 
 ---
 
-## ▶ RESUME HERE (next session) — 2026-06-09 (build green)
+## ▶ RESUME HERE (next session) — 2026-06-09 evening (tests green, golden hash run, server too old)
 
-**State:** all 13 task briefs implemented & committed on `feat/save-sync`. **Build is now GREEN** (commit
-`90047e9`). Three fixes applied during build:
-- `RomM.csproj`: added `UseWPF=true`, `EnableDefaultPageItems=false`, `EnableDefaultApplicationDefinition=false`
-  (SDK-style net462 WPF requires explicit flags)
-- `ConflictResolutionView.xaml.cs`: added `using System.Windows` (missing namespace for `Window`)
-- `SaveSyncController.cs`: `EmulatedPlatform.SpecificationId` → `.Id` (correct property name)
+**State:** build GREEN, **RomM.Tests suite added — 44/44 passing** (`dotnet test RomM.Tests\RomM.Tests.csproj`),
+golden hash test executed against the live server. **Blocking discovery: the user's RomM is 4.8.1, which
+has NO `/api/sync/*` endpoints** (negotiate protocol ships in 4.9.0-beta.x) **and a server bug that stores
+`content_hash = NULL` for all non-zip saves** (fixed in 4.9.0-beta.2). Full details: CONTRACT.md §9
+"Live verification round 1". The zip-composite golden hash MATCHED exactly (our algorithm is correct);
+the raw case can't be verified until the server runs 4.9.
 
-Build command: `dotnet build RomM.csproj --configuration Release` from repo root (needs .NET SDK 8+, installed via winget).
-Output: `bin\Release\net462\RomM.dll`
+**Code added this session (commits `82d8c25` + next):**
+- `RomM.Tests/` — xunit net462 suite (hash vectors, zip composite, N64 round-trip, PSX headers, GBA,
+  registry). `RomM.csproj`: `InternalsVisibleTo` + `DefaultItemExcludes=RomM.Tests\**` (root-level
+  project was globbing test sources into the WPF markup compile).
+- `SaveSyncController.SyncGame`: negotiate-404 now disambiguates stale device (body contains "Device")
+  from missing endpoint (pre-4.9 server) → clear "requires RomM 4.9 or newer" message.
+- `SaveSyncClient.CheckSyncSupported()` (GET /api/sync/sessions probe) + settings "Test connection"
+  now warns when the server is pre-4.9.
+- `docs/save-sync/tools/golden-hash-test.ps1` — repeatable golden test (uploads raw+zip fixtures to a
+  saveless rom, compares against the SHIPPED SaveHashing via reflection, deletes the test saves).
 
 **Do this, in order:**
-1. ~~Build~~ ✓ done (2026-06-09)
-2. **Golden hash test FIRST** (correctness gate): upload a save via the plugin to a real RomM, GET the
-   `SaveSchema`, assert `content_hash` == `SaveHashing.Md5Hex(bytes)`. If mismatch, fix hashing before
-   anything else — otherwise every save reads as a conflict. (Plus a multi-entry zip fixture.)
-3. Work the manual matrix in `docs/save-sync/QA.md` (RetroArch + standalone mGBA + one more; GBA/SNES/PSX/N64).
-4. Re-verify the 5 ⚠️LIVE contract items in `docs/save-sync/CONTRACT.md` §9 against the user's RomM version.
-5. When green, open the upstream PR (held intentionally — outward/public + unbuilt):
+1. ~~Build~~ ✓ 2. ~~Unit tests~~ ✓ 44/44 3. ~~Golden hash (zip)~~ ✓ MATCH (raw blocked by 4.8.1 bug)
+4. **DECISION (user):** upgrade `roms.ginnoir.com` to RomM `4.9.0-beta.2`+ (sync endpoints + hash fix)
+   — it's a Docker deploy (Portainer available). Without it, end-to-end sync cannot be tested.
+5. After upgrade: re-run `golden-hash-test.ps1` (expect RAW match too), exercise "Test connection"
+   (devices.write + sync probe), then work the manual QA matrix in `docs/save-sync/QA.md`.
+6. Re-verify remaining CONTRACT.md §9 items (1, 3, 4, 5, 6) against 4.9.x.
+7. When green, open the upstream PR (held intentionally):
    `gh pr create --repo rommapp/playnite-plugin --head ginnoir:feat/save-sync --title "feat: save & state sync with RomM" --draft --body-file <notes>`
+   Note in the PR that save sync requires RomM >= 4.9 (and that 4.8.x has the content_hash bug worth
+   reporting upstream to rommapp/romm if not already fixed on master).
 
 **Authoring-env constraints to remember:** GateGuard fact-forcing hook gates new-file Write + Bash + .cs/.csproj/.yaml/.md-new edits (present 4 facts, retry; edits to existing .md NOT gated). No SDK/MSBuild/VS here.
 

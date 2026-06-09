@@ -141,9 +141,20 @@ namespace RomM.SaveSync
 
             var negotiation = client.Negotiate(payload);
 
-            // The persisted device_id can go stale if the server DB was reset: re-register once and retry.
+            // A 404 here is ambiguous: a stale device_id (server DB reset) 404s with
+            // "Device with ID … not found", while a RomM older than 4.9 has no
+            // /api/sync/negotiate at all and 404s with a bare "Not Found". Only the
+            // stale-device case is fixable by re-registering.
             if (negotiation.NotFound)
             {
+                if (negotiation.Error == null ||
+                    negotiation.Error.IndexOf("Device", StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    result.Message = "This RomM server does not support save sync (requires RomM 4.9 or newer).";
+                    Logger.Warn(result.Message);
+                    return result;
+                }
+
                 Logger.Warn("RomM device not found; re-registering.");
                 deviceId = DeviceIdentity.ReRegister(client, Settings, Logger);
                 if (string.IsNullOrEmpty(deviceId))
