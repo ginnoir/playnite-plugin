@@ -5,16 +5,20 @@ Repo: fork `ginnoir/playnite-plugin`, branch `feat/save-sync`, upstream `rommapp
 
 ---
 
-## ▶ RESUME HERE (next session) — 2026-06-09
+## ▶ RESUME HERE (next session) — 2026-06-09 (build green)
 
-**State:** all 13 task briefs implemented & committed on `feat/save-sync` (commit `6992147`), pushed to
-`origin` (the fork). **NOT build-verified — no .NET toolchain in the authoring env.** Tomorrow = build.
+**State:** all 13 task briefs implemented & committed on `feat/save-sync`. **Build is now GREEN** (commit
+`90047e9`). Three fixes applied during build:
+- `RomM.csproj`: added `UseWPF=true`, `EnableDefaultPageItems=false`, `EnableDefaultApplicationDefinition=false`
+  (SDK-style net462 WPF requires explicit flags)
+- `ConflictResolutionView.xaml.cs`: added `using System.Windows` (missing namespace for `Window`)
+- `SaveSyncController.cs`: `EmulatedPlatform.SpecificationId` → `.Id` (correct property name)
+
+Build command: `dotnet build RomM.csproj --configuration Release` from repo root (needs .NET SDK 8+, installed via winget).
+Output: `bin\Release\net462\RomM.dll`
 
 **Do this, in order:**
-1. Open `RomM.sln` in Visual Studio (needs PlayniteSDK 6.16 nuget + net462). `nuget restore` then build
-   Release. Fix compile errors (likely candidates: Playnite SDK method/override signature mismatches in
-   `RomM.cs` lifecycle hooks; XAML page codegen for `SaveSync/ConflictResolutionView.xaml`; any internal
-   visibility issues). Use the build-error-resolver approach: minimal surgical fixes.
+1. ~~Build~~ ✓ done (2026-06-09)
 2. **Golden hash test FIRST** (correctness gate): upload a save via the plugin to a real RomM, GET the
    `SaveSchema`, assert `content_hash` == `SaveHashing.Md5Hex(bytes)`. If mismatch, fix hashing before
    anything else — otherwise every save reads as a conflict. (Plus a multi-entry zip fixture.)
