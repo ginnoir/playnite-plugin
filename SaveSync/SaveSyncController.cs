@@ -79,7 +79,7 @@ namespace RomM.SaveSync
                 return result;
             }
 
-            var profile = PlatformSaveProfiles.Get(mapping.Platform?.SpecificationId);
+            var profile = PlatformSaveProfiles.Get(mapping.Platform?.Id);
             var locator = new SaveLocator(Logger);
             var paths = locator.Resolve(mapping, game);
             if (!paths.Resolved)
@@ -354,7 +354,7 @@ namespace RomM.SaveSync
             var deviceId = DeviceIdentity.EnsureRegistered(client, Settings, Logger);
             if (string.IsNullOrEmpty(deviceId)) return result;
 
-            var profile = PlatformSaveProfiles.Get(mapping.Platform?.SpecificationId);
+            var profile = PlatformSaveProfiles.Get(mapping.Platform?.Id);
             var locator = new SaveLocator(Logger);
             var paths = locator.Resolve(mapping, game);
             if (!paths.Resolved) return result;

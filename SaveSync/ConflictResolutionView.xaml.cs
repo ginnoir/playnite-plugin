@@ -1,5 +1,6 @@
 using Playnite.SDK;
 using System;
+using System.Windows;
 using System.Windows.Controls;
 
 namespace RomM.SaveSync
