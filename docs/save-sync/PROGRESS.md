@@ -21,15 +21,28 @@ to a null-slot row named `<base> [conflict <utc>].<ext>`. End-to-end API flow ve
 with playtime ingest `created`). New tools: `verify-contract.ps1`, `probe-negotiate.ps1`,
 `slot-lane-test.ps1` (all read the plugin config; all clean up after themselves).
 
-**Do this, in order:**
-1. ~~Server upgrade~~ ✓ 2. ~~Golden hash raw+zip~~ ✓ 3. ~~CONTRACT §9 items 1,3,4,5~~ ✓
-4. **Manual QA matrix** (`docs/save-sync/QA.md`): user drives Playnite/emulators; verify server
-   state via API + plugin log `%AppData%\Playnite\playnite.log`. Deploy the fresh build into
-   Playnite first.
-5. Push `feat/save-sync` to fork (origin), then draft upstream PR (ASK USER first — public):
+**Live QA done this session (laptop TELLUS, log = `%LOCALAPPDATA%\Playnite\extensions.log`):**
+- ✅ device registration (settings "Test connection" → TELLUS on server)
+- ✅ cross-device seed-pull: steamdeck `.srm` → laptop standalone mGBA (Radical Red)
+- ✅ stop-push: changed save → new `default`-slot row, origin=TELLUS, server hash == local md5
+- ✅ `no_op` on unchanged; sessions COMPLETED with playtime ingest
+- ✅ conflict → Keep Local resolves correctly (dialog now themed)
+- ✅ N64 converter split/join byte-perfect on REAL deck saves (`n64-split-test.ps1`)
+- Bugs fixed live (committed): 4.9 named-slot redesign; import NRE on 4.9 slim list
+  (`with_files=true` + null-safe); conflict dialog black-on-dark theming; sync-outcome logging.
+- Documented gaps (QA.md): portable/scoop emulators need a Custom save-dir override; N64 standalones
+  (RMG/mupen64plus) name saves by GoodName+CRC not file basename (RetroArch is the supported N64 path).
+
+**Branch pushed to fork:** `origin/feat/save-sync` @ `4a27880` (2026-06-09 night).
+
+**Do this, in order (remaining):**
+1. ~~Server upgrade~~ ✓ ~~Golden hash~~ ✓ ~~CONTRACT §9~~ ✓ ~~core QA loop~~ ✓ ~~push to fork~~ ✓
+2. **Optional extra QA** (not blocking): savestates+screenshot, no_op/offline, more platforms.
+3. **Upstream PR (HELD — public, ASK USER FIRST):**
    `gh pr create --repo rommapp/playnite-plugin --head ginnoir:feat/save-sync --title "feat: save & state sync with RomM" --draft`
    PR body must note save sync requires **RomM >= 4.9** (4.8.x: no /api/sync/*, NULL raw hashes).
-6. Housekeeping when done: revert homelabstack pin to `rommapp/romm:4` once 4.9.0 stable ships.
+4. Housekeeping when 4.9.0 stable ships: revert homelabstack pin (`rommapp/romm:4.9.0-beta.2` →
+   `:4`) — commit `225078af` on ginnoir/homelabstack.
 
 **Authoring-env constraints to remember:** GateGuard fact-forcing hook gates new-file Write + Bash + .cs/.csproj/.yaml/.md-new edits (present 4 facts, retry; edits to existing .md NOT gated). No SDK/MSBuild/VS here.
 
