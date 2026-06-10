@@ -544,6 +544,9 @@ namespace RomM
                         { "platform_ids", apiPlatform.Id.ToString() },
                         { "order_by", "name" },
                         { "order_dir", "asc" },
+                        // RomM >= 4.9 returns a slim list schema with empty files[] unless asked;
+                        // pre-4.9 servers ignore the unknown parameter.
+                        { "with_files", "true" },
                     };
 
                     try
@@ -637,7 +640,7 @@ namespace RomM
                             item.HasMultipleFiles = true;
 
                         // Defensive: never allow path segments from server-provided filename & make sure single ROM files have an extention
-                        var fileName = item.HasMultipleFiles ? Path.GetFileName(item.FileName) : Path.GetFileName(item.Files.Where(f => f.FullPath.Count(c => c == '/') <= 3).FirstOrDefault().FileName);
+                        var fileName = item.HasMultipleFiles ? Path.GetFileName(item.FileName) : Path.GetFileName(item.Files.Where(f => f.FullPath.Count(c => c == '/') <= 3).FirstOrDefault()?.FileName);
                         if (string.IsNullOrWhiteSpace(fileName))
                         {
                             Logger.Warn($"Rom {item.Id} returned empty/invalid filename, skipping.");
@@ -1056,6 +1059,11 @@ namespace RomM
         public override void OnGameStarting(OnGameStartingEventArgs args)
         {
             base.OnGameStarting(args);
+
+            if (args.Game.PluginId == PluginId)
+            {
+                Logger.Debug($"OnGameStarting '{args.Game.Name}': enableSaveSync={Settings?.EnableSaveSync}, syncOnStart={Settings?.SyncOnGameStart}, version='{args.Game.Version}'");
+            }
 
             // Pull the latest save BEFORE the emulator opens it — synchronous so it lands in time.
             if (args.Game.PluginId == PluginId && Settings.EnableSaveSync && Settings.SyncOnGameStart)

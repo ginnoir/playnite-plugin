@@ -55,6 +55,7 @@ namespace RomM.SaveSync
 
             if (!TryGetRomId(game, out var romId))
             {
+                Logger.Debug($"Save sync skipped for '{game?.Name}': no RomM id on the game (Version field) — run a RomM library update to backfill.");
                 return result;
             }
 
@@ -62,6 +63,7 @@ namespace RomM.SaveSync
             var mapping = info?.Mapping;
             if (mapping == null || !mapping.SyncSaves)
             {
+                Logger.Debug($"Save sync skipped for '{game.Name}': {(mapping == null ? "no emulator mapping" : "SyncSaves disabled for this platform mapping")}.");
                 return result;
             }
 
@@ -228,6 +230,8 @@ namespace RomM.SaveSync
             }
             client.CompleteSession(sessionId, complete);
 
+            Logger.Info($"Save sync for '{game.Name}': {result.Uploaded} up, {result.Downloaded} down, " +
+                $"{result.Conflicts} conflict(s), {result.NoOps} no-op, {result.Failed} failed (session {sessionId}).");
             return result;
         }
 

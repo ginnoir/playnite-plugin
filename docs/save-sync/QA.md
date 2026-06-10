@@ -20,6 +20,10 @@
 
 ## Known gaps / follow-ups
 - **Save flushed after process exit**: `OnGameStopped` fires post-exit; most emulators flush on close, but a brief settle delay before push would be safer. Manual "Push local → RomM" is the fallback.
+- **Portable/scoop emulators need a Custom save dir override** (live-QA finding, 2026-06-09):
+  scoop's mGBA runs portable with `savegamePath=savegame` → `scoop\persist\mgba\savegame\`; the
+  Auto locator picked next-to-rom, so the pull landed where the emulator never looks. Setting the
+  mapping to `Custom` + the emulator's real save dir fixed it. Document prominently for users.
 - **RetroArch `sort_savefiles_enable`** (per-core subfolder) isn't resolved (we can't map Playnite→core name); document "use a Custom save dir override" for those users.
 - **Clock skew**: negotiate compares the local file mtime (UTC) to the server timestamp; large skew can mis-order. Document NTP.
 - **N64 `.mpk` size convention** varies by standalone emulator (single 0x8000 vs full 0x20000); the round-trip guard protects the canonical blob, but loading on a specific standalone is a manual check.
@@ -37,11 +41,20 @@ If these don't match, the negotiate diff is meaningless — stop and fix hashing
 - RetroArch cfg parse: `savefile_directory`, `*_in_content_dir`, `sort_*_by_content`, `:`-relative paths.
 
 ## Manual end-to-end matrix (≥3 emulators × ≥3 platforms)
+
+> **Live round 1 (2026-06-09, laptop TELLUS + RomM 4.9.0-beta.2):** ✅ device registration via
+> settings; ✅ seed-pull steamdeck `.srm` → standalone-mGBA `.sav` (Radical Red; required Custom
+> save-dir override for scoop's portable mGBA); ✅ negotiate `no_op` on identical content;
+> ✅ stop-push uploaded the changed save (new `default`-slot row, `origin_device_id` = TELLUS,
+> server hash == local md5, RTC-footer 131088 round-trip); ✅ sync sessions COMPLETED with the
+> library-wide op list correctly filtered to the launched game. Also exercised on the way:
+> import-NRE fix against 4.9 slim list schema (`with_files=true`) and the Version backfill path.
+
 | Scenario | Expect |
 |---|---|
 | RetroArch GBA: play → stop | `.srm` uploaded, hash matches, playtime recorded |
-| Standalone mGBA GBA: install (seed) | RomM `.srm` → local `.sav` written |
-| RetroArch ↔ mGBA same game | Save round-trips and loads in both |
+| Standalone mGBA GBA: install (seed) | RomM `.srm` → local `.sav` written — ✅ VERIFIED LIVE 2026-06-09 |
+| RetroArch ↔ mGBA same game | Save round-trips and loads in both — ✅ VERIFIED LIVE (steamdeck RetroArch core ↔ laptop standalone mGBA) |
 | SNES (RetroArch) | `.srm` identity sync |
 | PSX (Beetle ↔ DuckStation) | 128K card round-trips |
 | N64 (RetroArch ↔ standalone) | `.srm` ↔ `.eep`/`.sra`/`.fla`/`.mpk`, loads both sides |

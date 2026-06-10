@@ -178,11 +178,13 @@ namespace RomM.Models.RomM.Rom
         [JsonProperty("has_multiple_files")]
         public bool HasMultipleFiles { get; set; }
 
+        // RomM >= 4.9 omits files/siblings from the list endpoint's slim schema unless
+        // requested (?with_files=true) — default to empty so absent fields can't NRE.
         [JsonProperty("files")]
-        public List<RomMFile> Files { get; set; }
+        public List<RomMFile> Files { get; set; } = new List<RomMFile>();
 
         [JsonProperty("siblings")]
-        public List<RomMSibling> Siblings { get; set; }
+        public List<RomMSibling> Siblings { get; set; } = new List<RomMSibling>();
 
         [JsonProperty("full_path")]
         public string FullPath { get; set; }
