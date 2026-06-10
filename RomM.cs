@@ -98,6 +98,8 @@ namespace RomM
         private readonly SaveSyncController saveSync;
         private readonly ConcurrentDictionary<Guid, DateTime> gameStartTimesUtc = new ConcurrentDictionary<Guid, DateTime>();
 
+        private SaveSync.GameSyncStatusControl _saveStatusControl;
+
         // Implementing Client adds ability to open it via special menu in playnite
         public override LibraryClient Client { get; } = new RomMClient();
 
@@ -855,6 +857,13 @@ namespace RomM
             {
                 yield return DownloadsSidebar;
             }
+        }
+
+        public override System.Windows.Controls.Control GetGameViewControl(GetGameViewControlArgs args)
+        {
+            if (_saveStatusControl == null)
+                _saveStatusControl = new SaveSync.GameSyncStatusControl(this);
+            return _saveStatusControl;
         }
 
         public override ISettings GetSettings(bool firstRunSettings)
