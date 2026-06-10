@@ -57,7 +57,23 @@ If these don't match, the negotiate diff is meaningless — stop and fix hashing
 | RetroArch ↔ mGBA same game | Save round-trips and loads in both — ✅ VERIFIED LIVE (steamdeck RetroArch core ↔ laptop standalone mGBA) |
 | SNES (RetroArch) | `.srm` identity sync |
 | PSX (Beetle ↔ DuckStation) | 128K card round-trips |
-| N64 (RetroArch ↔ standalone) | `.srm` ↔ `.eep`/`.sra`/`.fla`/`.mpk`, loads both sides |
+| N64 (RetroArch ↔ standalone) | `.srm` ↔ `.eep`/`.sra`/`.fla`/`.mpk` — ⚠️ PARTIAL (see below) |
+
+### N64 live findings (2026-06-09, real steamdeck saves + RMG/mupen64plus on laptop)
+- **✅ Converter split/join verified on PRODUCTION data.** `n64-split-test.ps1` pulled both deck
+  `.srm`s (Chameleon Twist 2 id 14, 007 TWINE id 15; 296960 B each) and ran them through the SHIPPED
+  `N64SaveConverter` via reflection: each split into 4 component files and the split→join round-trip
+  reproduced the **exact** server MD5 (`03499c91…`, `dc7ce62e…`). The 0x48800 libretro layout is
+  correct on real data.
+- **❗ Standalone filename gap (RMG / mupen64plus, Project64).** These emulators name save files by
+  the ROM's internal **GoodName + CRC** from `mupen64plus.ini` (e.g. `Mega Man 64 (U) [!]-3620674A.fla`),
+  NOT the ROM file basename. The locator writes `<fileBasename>.<ext>`, so a pulled save lands with
+  the wrong name and the standalone starts fresh. Same class as the RetroArch core-subfolder gap.
+  **Supported N64 path = RetroArch mupen64plus_next** (single `.srm`, keyed by file basename, which
+  the negotiate `(rom_id, slot)` pairing and the locator both resolve). Standalone N64 needs a future
+  GoodName/CRC resolver (mupen64plus.ini lookup) — out of scope for v1; document for users.
+- Also confirmed: RMG's portable save dir is the **versioned** scoop app dir
+  (`scoop\apps\rmg\<ver>\Save\Game\`), which scoop wipes on update — a scoop packaging quirk, not ours.
 | Edit save on two devices | conflict → dialog (Ask) / policy resolves, backup exists, no data loss |
 | Unchanged save, re-sync | `no_op`, no spurious upload |
 | Savestate (RetroArch) | state + `.png` thumbnail upload/download, never converted |
