@@ -15,8 +15,14 @@ plugin reports local state, executes the server's plan, and converts between emu
 3. For each emulator mapping, tick **Sync saves** and pick a **Save location** strategy:
    - **Auto** — RetroArch is detected automatically; everything else looks next to the ROM.
    - **RetroArch** — parses `retroarch.cfg` (`savefile_directory`, `savestate_directory`, content-dir
-     and by-content sort). If you use `sort_savefiles_enable` (per-core subfolders), set a **Custom**
-     override instead.
+     and by-content sort). `sort_savefiles_enable`/`sort_savestates_enable` (per-core subfolders like
+     `saves\mGBA\`) are now handled automatically: the existing subfolder is auto-detected, and for a
+     game you've never launched on this machine the core name is derived from the core's
+     `info\<core>_libretro.info`.
+   - **Scoop** — for RetroArch installed via Scoop. Same as **RetroArch** but always resolves the
+     per-core sort subfolder; the cfg's `:\saves`/`:\states` point at Scoop's persisted save root
+     (`scoop\persist\retroarch\…`) through the `current\` junction. (Scoop ships RetroArch with
+     per-core sorting on by default, so use this — or **Auto**/**RetroArch**, which now handle it too.)
    - **NextToRom**, **EmulatorSaveFolder**, **Custom** (with a *Save dir override* path).
 
 ## How it syncs

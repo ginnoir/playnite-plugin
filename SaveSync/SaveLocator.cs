@@ -56,6 +56,9 @@ namespace RomM.SaveSync
             switch (strategy)
             {
                 case SaveLocatorStrategy.RetroArch:
+                case SaveLocatorStrategy.Scoop:
+                    // Scoop is RetroArch with the per-core sort subfolder always in play; the cfg's
+                    // ":\saves" points at Scoop's persisted save root via the current\ junction.
                     ResolveRetroArch(mapping, contentDir, result);
                     break;
 
@@ -148,13 +151,13 @@ namespace RomM.SaveSync
                 return;
             }
 
-            result.SaveDir = ResolveRetroArchDir(cfg, contentDir, "savefile_directory", "savefiles_in_content_dir",
+            result.SaveDir = ResolveRetroArchDir(cfg, contentDir, result.RomBaseName, "savefile_directory", "savefiles_in_content_dir",
                 "sort_savefiles_enable", "sort_savefiles_by_content_enable", mapping);
-            result.StateDir = ResolveRetroArchDir(cfg, contentDir, "savestate_directory", "savestates_in_content_dir",
+            result.StateDir = ResolveRetroArchDir(cfg, contentDir, result.RomBaseName, "savestate_directory", "savestates_in_content_dir",
                 "sort_savestates_enable", "sort_savestates_by_content_enable", mapping);
         }
 
-        private string ResolveRetroArchDir(IDictionary<string, string> cfg, string contentDir,
+        private string ResolveRetroArchDir(IDictionary<string, string> cfg, string contentDir, string romBaseName,
             string dirKey, string inContentKey, string sortEnableKey, string sortByContentKey, EmulatorMapping mapping)
         {
             cfg.TryGetValue(dirKey, out var dir);
@@ -171,13 +174,27 @@ namespace RomM.SaveSync
 
             if (string.IsNullOrEmpty(dir)) return contentDir;
 
-            // RetroArch optionally nests saves in a per-content-folder subdirectory.
+            // RetroArch optionally nests saves a level deeper. by-content takes precedence over
+            // by-core when both flags are set, so test it first.
             if (IsTrue(cfg, sortByContentKey) && !string.IsNullOrEmpty(contentDir))
             {
                 dir = Path.Combine(dir, new DirectoryInfo(contentDir).Name);
             }
-            // NOTE: sort_*_enable nests by core/system name, which we can't reliably resolve from
-            // Playnite's mapping. Users with that enabled should set a Custom save dir override.
+            else if (IsTrue(cfg, sortEnableKey))
+            {
+                // sort_*_enable nests by the core's display name, e.g. "saves\mGBA\<rom>.srm".
+                var coreFolder = ResolveCoreSortFolder(dir, romBaseName, mapping);
+                if (!string.IsNullOrEmpty(coreFolder))
+                {
+                    dir = Path.Combine(dir, coreFolder);
+                }
+                else
+                {
+                    _logger.Warn($"RetroArch sort-by-core is enabled but the core subfolder under '{dir}' " +
+                        $"could not be determined for '{romBaseName}'; using the base save dir. " +
+                        "Launch the game once, or set a Custom save dir override, if saves aren't found.");
+                }
+            }
 
             return dir;
         }
@@ -249,6 +266,131 @@ namespace RomM.SaveSync
                 return Path.Combine(mapping.EmulatorBasePathResolved ?? "", rel);
             }
             return dir;
+        }
+
+        // ---- RetroArch sort-by-core subfolder ------------------------------
+
+        /// <summary>
+        /// The subfolder under <paramref name="baseDir"/> that RetroArch's sort_*_enable nesting uses
+        /// for this game (e.g. "mGBA"): prefer an existing subdir already holding "&lt;base&gt;.*", then
+        /// the core name derived from the mapping's libretro core info. Null when undeterminable.
+        /// </summary>
+        private string ResolveCoreSortFolder(string baseDir, string romBaseName, EmulatorMapping mapping)
+        {
+            return DetectCoreSubfolder(baseDir, romBaseName, TryResolveCoreName(mapping));
+        }
+
+        /// <summary>
+        /// Pure core-subfolder picker (filesystem only, no Playnite types) so it is unit-testable.
+        /// Prefers an existing subdir of <paramref name="baseDir"/> containing "&lt;romBaseName&gt;.*";
+        /// when several match (e.g. a stale by-content folder beside the live core folder) prefers
+        /// <paramref name="preferredCore"/>, else the most-recently-written; when none exist (game
+        /// never launched here) falls back to <paramref name="preferredCore"/>. Null if all of that fails.
+        /// </summary>
+        internal static string DetectCoreSubfolder(string baseDir, string romBaseName, string preferredCore)
+        {
+            if (!string.IsNullOrEmpty(baseDir) && !string.IsNullOrEmpty(romBaseName) && Directory.Exists(baseDir))
+            {
+                var matches = new List<KeyValuePair<string, DateTime>>();
+                foreach (var sub in Directory.EnumerateDirectories(baseDir))
+                {
+                    var newest = DateTime.MinValue;
+                    var has = false;
+                    foreach (var f in Directory.EnumerateFiles(sub, romBaseName + ".*", SearchOption.TopDirectoryOnly))
+                    {
+                        has = true;
+                        var m = File.GetLastWriteTimeUtc(f);
+                        if (m > newest) newest = m;
+                    }
+                    if (has) matches.Add(new KeyValuePair<string, DateTime>(new DirectoryInfo(sub).Name, newest));
+                }
+
+                if (matches.Count == 1)
+                {
+                    return matches[0].Key;
+                }
+                if (matches.Count > 1)
+                {
+                    if (!string.IsNullOrEmpty(preferredCore))
+                    {
+                        var hit = matches.FirstOrDefault(x => string.Equals(x.Key, preferredCore, StringComparison.OrdinalIgnoreCase));
+                        if (hit.Key != null) return hit.Key;
+                    }
+                    return matches.OrderByDescending(x => x.Value).First().Key;
+                }
+            }
+
+            return string.IsNullOrEmpty(preferredCore) ? null : preferredCore;
+        }
+
+        /// <summary>RetroArch core display name (e.g. "mGBA") for the mapping's profile, or null.</summary>
+        private string TryResolveCoreName(EmulatorMapping mapping)
+        {
+            var coreFile = TryResolveRetroArchCoreFile(mapping);
+            return string.IsNullOrEmpty(coreFile) ? null : TryReadCoreName(mapping?.EmulatorBasePathResolved, coreFile);
+        }
+
+        /// <summary>The libretro core base file name (e.g. "mgba_libretro") referenced by the profile's args.</summary>
+        private string TryResolveRetroArchCoreFile(EmulatorMapping mapping)
+        {
+            string args = null;
+            var profile = mapping?.EmulatorProfile;
+            var custom = profile as CustomEmulatorProfile;
+            var builtIn = profile as BuiltInEmulatorProfile;
+            if (custom != null)
+            {
+                args = custom.Arguments;
+            }
+            else if (builtIn != null)
+            {
+                try
+                {
+                    // The bundled definition usually carries "-L ...<core>_libretro.dll"; fall back to
+                    // the user's overridden built-in args if it doesn't.
+                    args = SettingsViewModel.Instance.PlayniteAPI.Emulation.Emulators
+                        .FirstOrDefault(e => e.Id == mapping.Emulator?.BuiltInConfigId)?
+                        .Profiles
+                        .FirstOrDefault(p => p.Name == builtIn.Name)?
+                        .StartupArguments;
+                    if (ExtractLibretroCoreToken(args) == null)
+                    {
+                        args = builtIn.CustomArguments;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warn(ex, "Could not resolve the built-in RetroArch core from the profile.");
+                }
+            }
+            return ExtractLibretroCoreToken(args);
+        }
+
+        private static readonly Regex LibretroCoreToken = new Regex(@"([A-Za-z0-9_]+_libretro)", RegexOptions.IgnoreCase);
+
+        /// <summary>Pull the "&lt;core&gt;_libretro" token out of an emulator argument string, or null.</summary>
+        internal static string ExtractLibretroCoreToken(string args)
+        {
+            if (string.IsNullOrEmpty(args)) return null;
+            var m = LibretroCoreToken.Match(args);
+            return m.Success ? m.Groups[1].Value.ToLowerInvariant() : null;
+        }
+
+        /// <summary>Read "corename" from "&lt;install&gt;\info\&lt;coreFile&gt;.info" (RetroArch key=value), or null.</summary>
+        private string TryReadCoreName(string basePath, string coreFile)
+        {
+            if (string.IsNullOrEmpty(basePath) || string.IsNullOrEmpty(coreFile)) return null;
+            var infoPath = Path.Combine(basePath, "info", coreFile + ".info");
+            if (!File.Exists(infoPath)) return null;
+            try
+            {
+                var info = ParseRetroArchConfig(File.ReadAllLines(infoPath));
+                return info.TryGetValue("corename", out var name) && !string.IsNullOrWhiteSpace(name) ? name : null;
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn(ex, $"Could not read corename from '{infoPath}'.");
+                return null;
+            }
         }
 
         private string FindEmulatorSaveFolder(EmulatorMapping mapping)

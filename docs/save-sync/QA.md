@@ -24,7 +24,13 @@
   scoop's mGBA runs portable with `savegamePath=savegame` → `scoop\persist\mgba\savegame\`; the
   Auto locator picked next-to-rom, so the pull landed where the emulator never looks. Setting the
   mapping to `Custom` + the emulator's real save dir fixed it. Document prominently for users.
-- **RetroArch `sort_savefiles_enable`** (per-core subfolder) isn't resolved (we can't map Playnite→core name); document "use a Custom save dir override" for those users.
+- ~~**RetroArch `sort_savefiles_enable`** (per-core subfolder) isn't resolved~~ **RESOLVED (2026-06-10):**
+  the locator now descends into the per-core sort folder for `RetroArch`/`Scoop`/`Auto`. It auto-detects
+  the existing `saves\<core>\<rom>.*` subfolder; for a never-launched game it derives the core's display
+  name from the mapped `<core>_libretro` arg → `info\<core>_libretro.info` `corename` (e.g. `mGBA`).
+  Falls back to the base dir + a warning only when neither resolves. The new `Scoop` save-location
+  value forces this path for RetroArch-via-Scoop installs (cfg `:\saves` → the `persist\` root via the
+  `current\` junction).
 - **Clock skew**: negotiate compares the local file mtime (UTC) to the server timestamp; large skew can mis-order. Document NTP.
 - **N64 `.mpk` size convention** varies by standalone emulator (single 0x8000 vs full 0x20000); the round-trip guard protects the canonical blob, but loading on a specific standalone is a manual check.
 - **PSX `.vmp`/`.gme` write**: intentionally unsupported (signed header) → sync as-is + warn.

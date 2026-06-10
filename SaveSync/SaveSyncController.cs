@@ -596,9 +596,13 @@ namespace RomM.SaveSync
             }
 
             var strategy = mapping.SaveStrategy;
-            if (strategy == SaveLocatorStrategy.RetroArch)
+            var emulatorIsRetroArch = (mapping.Emulator?.Name ?? "")
+                .IndexOf("retroarch", StringComparison.OrdinalIgnoreCase) >= 0;
+            if (strategy == SaveLocatorStrategy.RetroArch
+                || strategy == SaveLocatorStrategy.Scoop
+                || (strategy == SaveLocatorStrategy.Auto && emulatorIsRetroArch))
             {
-                return profile.CanonicalSaveExtension; // RetroArch uses .srm
+                return profile.CanonicalSaveExtension; // RetroArch (incl. Scoop) uses .srm
             }
 
             // Standalone defaults per family when nothing exists yet.

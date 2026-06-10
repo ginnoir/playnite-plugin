@@ -16,6 +16,9 @@ namespace RomM.Settings
         RetroArch,          // parse retroarch.cfg savefile/savestate directories
         NextToRom,          // saves sit beside the ROM, matched by extension
         EmulatorSaveFolder, // a fixed save folder under the emulator install dir
+        Scoop,              // RetroArch installed via Scoop: resolves the cfg's :\saves / :\states
+                            // (Scoop's persisted save root, reached through the current\ junction) and
+                            // always descends into the per-core sort subfolder (sort_savefiles_enable)
         Custom              // use SaveDirOverride verbatim
     }
 

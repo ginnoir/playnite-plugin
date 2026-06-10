@@ -35,6 +35,19 @@ with playtime ingest `created`). New tools: `verify-contract.ps1`, `probe-negoti
 
 **Branch pushed to fork:** `origin/feat/save-sync` @ `4a27880` (2026-06-09 night).
 
+**❗ Addendum (2026-06-10) — RetroArch per-core sort folders + `Scoop` save-location value (built GREEN,
+55/55 tests pass via `dotnet test`; live verify pending):** Scoop's `retroarch.cfg` ships `sort_savefiles_enable`/`sort_savestates_enable = "true"`, which
+nests saves a level deeper by core display name (`saves\mGBA\<rom>.srm`). The locator previously punted
+on this (looked one folder too shallow → reads found nothing, pulls wrote to the wrong folder). Now
+`SaveLocator.ResolveRetroArchDir` honors `sort_*_enable`: auto-detects the existing `saves\<core>\`
+subfolder, else derives the core name from the mapped `<core>_libretro` arg → `info\<core>_libretro.info`
+`corename`. New enum value `SaveLocatorStrategy.Scoop` (inserted before `Custom`; no users yet so order
+is free) routes through the same sort-aware RetroArch path. `InferTargetNativeExt` now treats
+`Scoop`/`Auto`+RetroArch as `.srm`. New helpers `DetectCoreSubfolder`/`ExtractLibretroCoreToken` are
+`internal` + unit-tested in `RomM.Tests/SaveLocatorRetroArchSortTests.cs`. **Verify live on this Scoop box
++ build in VS/CI** (no toolchain here). Files: `Settings/EmulatorMapping.cs`, `SaveSync/SaveLocator.cs`,
+`SaveSync/SaveSyncController.cs`, `RomM.Tests/SaveLocatorRetroArchSortTests.cs`, `docs/save-sync/QA.md`.
+
 **Do this, in order (remaining):**
 1. ~~Server upgrade~~ ✓ ~~Golden hash~~ ✓ ~~CONTRACT §9~~ ✓ ~~core QA loop~~ ✓ ~~push to fork~~ ✓
 2. **Optional extra QA** (not blocking): savestates+screenshot, no_op/offline, more platforms.
