@@ -9,24 +9,23 @@
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
     </sdk:PluginUserControl.Resources>
 
-    <!-- Hide entirely when not a RomM game -->
-    <DockPanel Visibility="{Binding IsRomMGame, Converter={StaticResource BoolToVis}}">
+    <DockPanel Margin="8">
 
-        <!-- Header row -->
+        <!-- Game picker + refresh -->
         <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
             <Button DockPanel.Dock="Right"
                     Content="↻"
                     ToolTip="Refresh"
                     MinWidth="28"
+                    Margin="8,0,0,0"
                     Style="{DynamicResource ButtonStyle}"
                     Command="{Binding RefreshCommand}" />
-            <TextBlock Text="Save Sync Status"
-                       FontWeight="SemiBold"
-                       VerticalAlignment="Center"
-                       Foreground="{DynamicResource TextBrush}" />
+            <ComboBox ItemsSource="{Binding AvailableGames}"
+                      SelectedItem="{Binding SelectedGame, Mode=TwoWay}"
+                      DisplayMemberPath="Name"
+                      IsEditable="False" />
         </DockPanel>
 
-        <!-- Loading spinner -->
         <ProgressBar DockPanel.Dock="Top"
                      IsIndeterminate="True"
                      Height="4"
@@ -35,20 +34,20 @@
                      Background="{DynamicResource ProgressBarBackgroundBrush}"
                      Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}" />
 
-        <!-- Status note (disabled / no mapping / etc.) -->
         <TextBlock DockPanel.Dock="Top"
                    Text="{Binding StatusNote}"
                    TextWrapping="Wrap"
                    Opacity="0.7"
+                   Margin="0,0,0,8"
                    Foreground="{DynamicResource SecondaryTextBrush}"
                    Visibility="{Binding HasStatusNote, Converter={StaticResource BoolToVis}}" />
 
-        <!-- Error -->
         <StackPanel DockPanel.Dock="Top"
+                    Margin="0,0,0,8"
                     Visibility="{Binding HasError, Converter={StaticResource BoolToVis}}">
             <TextBlock Text="{Binding ErrorText}"
                        TextWrapping="Wrap"
-                       Foreground="{DynamicResource WarningBrush}" />
+                       Foreground="{DynamicResource TextBrush}" />
             <Button Content="Retry"
                     Margin="0,4,0,0"
                     HorizontalAlignment="Left"
@@ -56,102 +55,99 @@
                     Command="{Binding RefreshCommand}" />
         </StackPanel>
 
-        <!-- Content (saves + states) -->
-        <StackPanel Visibility="{Binding ShowContent, Converter={StaticResource BoolToVis}}">
+        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      Visibility="{Binding ShowContent, Converter={StaticResource BoolToVis}}">
+            <StackPanel>
 
-            <!-- Battery saves section -->
-            <StackPanel Visibility="{Binding ShowSavesSection, Converter={StaticResource BoolToVis}}"
-                        Margin="0,0,0,10">
-                <TextBlock Text="Battery Saves"
-                           FontWeight="SemiBold"
-                           Margin="0,0,0,4"
-                           Foreground="{DynamicResource TextBrush}" />
+                <StackPanel Visibility="{Binding ShowSavesSection, Converter={StaticResource BoolToVis}}"
+                            Margin="0,0,0,12">
+                    <TextBlock Text="Battery Saves"
+                               FontWeight="SemiBold"
+                               Margin="0,0,0,4"
+                               Foreground="{DynamicResource TextBrush}" />
+                    <ItemsControl ItemsSource="{Binding SaveItems}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderThickness="0,0,0,1"
+                                        BorderBrush="{DynamicResource NormalBorderBrush}"
+                                        Padding="0,5">
+                                    <DockPanel>
+                                        <TextBlock DockPanel.Dock="Right"
+                                                   Text="{Binding StatusText}"
+                                                   FontSize="11"
+                                                   VerticalAlignment="Center"
+                                                   Margin="8,0,0,0"
+                                                   Foreground="{DynamicResource TextBrush}" />
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Label}"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource TextBrush}" />
+                                            <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                                <TextBlock Text="Local  " FontSize="11"
+                                                           Foreground="{DynamicResource SecondaryTextBrush}" />
+                                                <TextBlock Text="{Binding LocalTime}" FontSize="11"
+                                                           Foreground="{DynamicResource SecondaryTextBrush}" />
+                                            </StackPanel>
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="Server " FontSize="11"
+                                                           Foreground="{DynamicResource SecondaryTextBrush}" />
+                                                <TextBlock Text="{Binding ServerTime}" FontSize="11"
+                                                           Foreground="{DynamicResource SecondaryTextBrush}" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
 
-                <!-- Column headers -->
-                <Grid Margin="0,0,0,2">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="80" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="100" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Slot"   Opacity="0.6" FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}" />
-                    <TextBlock Grid.Column="1" Text="Local"  Opacity="0.6" FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}" />
-                    <TextBlock Grid.Column="2" Text="Server" Opacity="0.6" FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}" />
-                    <TextBlock Grid.Column="3" Text="Status" Opacity="0.6" FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}" />
-                </Grid>
+                <StackPanel Visibility="{Binding ShowStatesSection, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="Save States"
+                               FontWeight="SemiBold"
+                               Margin="0,0,0,4"
+                               Foreground="{DynamicResource TextBrush}" />
+                    <ItemsControl ItemsSource="{Binding StateItems}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderThickness="0,0,0,1"
+                                        BorderBrush="{DynamicResource NormalBorderBrush}"
+                                        Padding="0,5">
+                                    <DockPanel>
+                                        <TextBlock DockPanel.Dock="Right"
+                                                   Text="{Binding StatusText}"
+                                                   FontSize="11"
+                                                   VerticalAlignment="Center"
+                                                   Margin="8,0,0,0"
+                                                   Foreground="{DynamicResource TextBrush}" />
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Label}"
+                                                       FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Foreground="{DynamicResource TextBrush}" />
+                                            <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                                <TextBlock Text="Local  " FontSize="11"
+                                                           Foreground="{DynamicResource SecondaryTextBrush}" />
+                                                <TextBlock Text="{Binding LocalTime}" FontSize="11"
+                                                           Foreground="{DynamicResource SecondaryTextBrush}" />
+                                            </StackPanel>
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="Server " FontSize="11"
+                                                           Foreground="{DynamicResource SecondaryTextBrush}" />
+                                                <TextBlock Text="{Binding ServerTime}" FontSize="11"
+                                                           Foreground="{DynamicResource SecondaryTextBrush}" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
 
-                <ItemsControl ItemsSource="{Binding SaveItems}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Border BorderThickness="0,0,0,1"
-                                    BorderBrush="{DynamicResource NormalBorderBrush}"
-                                    Padding="0,4">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="80" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="100" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="{Binding Label}"      Foreground="{DynamicResource TextBrush}" />
-                                    <TextBlock Grid.Column="1" Text="{Binding LocalTime}"  Foreground="{DynamicResource SecondaryTextBrush}" />
-                                    <TextBlock Grid.Column="2" Text="{Binding ServerTime}" Foreground="{DynamicResource SecondaryTextBrush}" />
-                                    <TextBlock Grid.Column="3" Text="{Binding StatusText}" Foreground="{DynamicResource TextBrush}" />
-                                </Grid>
-                            </Border>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
             </StackPanel>
+        </ScrollViewer>
 
-            <!-- Save states section -->
-            <StackPanel Visibility="{Binding ShowStatesSection, Converter={StaticResource BoolToVis}}">
-                <TextBlock Text="Save States"
-                           FontWeight="SemiBold"
-                           Margin="0,0,0,4"
-                           Foreground="{DynamicResource TextBrush}" />
-
-                <!-- Column headers -->
-                <Grid Margin="0,0,0,2">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="110" />
-                        <ColumnDefinition Width="110" />
-                        <ColumnDefinition Width="100" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="File"   Opacity="0.6" FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}" />
-                    <TextBlock Grid.Column="1" Text="Local"  Opacity="0.6" FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}" />
-                    <TextBlock Grid.Column="2" Text="Server" Opacity="0.6" FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}" />
-                    <TextBlock Grid.Column="3" Text="Status" Opacity="0.6" FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}" />
-                </Grid>
-
-                <ItemsControl ItemsSource="{Binding StateItems}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Border BorderThickness="0,0,0,1"
-                                    BorderBrush="{DynamicResource NormalBorderBrush}"
-                                    Padding="0,4">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="110" />
-                                        <ColumnDefinition Width="110" />
-                                        <ColumnDefinition Width="100" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="{Binding Label}"
-                                               Foreground="{DynamicResource TextBrush}"
-                                               TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Grid.Column="1" Text="{Binding LocalTime}"  Foreground="{DynamicResource SecondaryTextBrush}" />
-                                    <TextBlock Grid.Column="2" Text="{Binding ServerTime}" Foreground="{DynamicResource SecondaryTextBrush}" />
-                                    <TextBlock Grid.Column="3" Text="{Binding StatusText}" Foreground="{DynamicResource TextBrush}" />
-                                </Grid>
-                            </Border>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </StackPanel>
-
-        </StackPanel>
     </DockPanel>
 </sdk:PluginUserControl>

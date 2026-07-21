@@ -1,6 +1,5 @@
 using Playnite.SDK;
 using Playnite.SDK.Models;
-using RomM.Games;
 using RomM.Models.RomM.Sync;
 using RomM.SaveSync.Converters;
 using RomM.Settings;
@@ -53,17 +52,21 @@ namespace RomM.SaveSync
                 return result;
             }
 
-            if (!TryGetRomId(game, out var romId))
+            if (!SaveSyncGameResolve.TryGetRomId(game, out var romId))
             {
-                Logger.Debug($"Save sync skipped for '{game?.Name}': no RomM id on the game (Version field) — run a RomM library update to backfill.");
+                Logger.Debug($"Save sync skipped for '{game?.Name}': no RomM id on the game (GameId/Version) — run a RomM library update to backfill.");
                 return result;
             }
 
-            var info = game.GetRomMGameInfo();
-            var mapping = info?.Mapping;
-            if (mapping == null || !mapping.SyncSaves)
+            if (!SaveSyncGameResolve.TryGetMapping(game, _romM, out var mapping, out var mapErr))
             {
-                Logger.Debug($"Save sync skipped for '{game.Name}': {(mapping == null ? "no emulator mapping" : "SyncSaves disabled for this platform mapping")}.");
+                Logger.Debug($"Save sync skipped for '{game.Name}': {mapErr}");
+                return result;
+            }
+
+            if (!mapping.SyncSaves)
+            {
+                Logger.Debug($"Save sync skipped for '{game.Name}': SyncSaves disabled for this platform mapping.");
                 return result;
             }
 
@@ -244,13 +247,12 @@ namespace RomM.SaveSync
         /// </summary>
         public void SyncStates(Game game, CancellationToken ct)
         {
-            if (!Settings.EnableStateSync || !TryGetRomId(game, out var romId))
+            if (!Settings.EnableStateSync || !SaveSyncGameResolve.TryGetRomId(game, out var romId))
             {
                 return;
             }
 
-            var mapping = game.GetRomMGameInfo()?.Mapping;
-            if (mapping == null || !mapping.SyncSaves)
+            if (!SaveSyncGameResolve.TryGetMapping(game, _romM, out var mapping, out _) || !mapping.SyncSaves)
             {
                 return;
             }
@@ -374,9 +376,9 @@ namespace RomM.SaveSync
         private SyncResult ForceDirection(Game game, bool push, CancellationToken ct)
         {
             var result = new SyncResult();
-            if (!TryGetRomId(game, out var romId)) return result;
-            var mapping = game.GetRomMGameInfo()?.Mapping;
-            if (mapping == null || string.IsNullOrEmpty(Settings.RomMHost) || !Settings.HasAnyAuth) return result;
+            if (!SaveSyncGameResolve.TryGetRomId(game, out var romId)) return result;
+            if (!SaveSyncGameResolve.TryGetMapping(game, _romM, out var mapping, out _)) return result;
+            if (string.IsNullOrEmpty(Settings.RomMHost) || !Settings.HasAnyAuth) return result;
 
             var client = new SaveSyncClient(Settings.RomMHost, Logger);
             var deviceId = DeviceIdentity.EnsureRegistered(client, Settings, Logger);
@@ -614,31 +616,6 @@ namespace RomM.SaveSync
                 case "n64": return "eep"; // sentinel: any non-"srm" makes N64 converter split into components
                 default: return profile.CanonicalSaveExtension;
             }
-        }
-
-        private static bool TryGetRomId(Game game, out int romId)
-        {
-            romId = -1;
-            if (game == null)
-            {
-                return false;
-            }
-
-            // Current format: GameId = "{romMId}:{sha1}"
-            if (RomMGameId.TryParse(game.GameId, out romId, out _))
-            {
-                return true;
-            }
-
-            // Legacy: Version = "RomM:{id}" (pre-GameId migration)
-            var version = game.Version;
-            if (!string.IsNullOrEmpty(version) && version.StartsWith("RomM:") &&
-                int.TryParse(version.Split(':')[1], out romId))
-            {
-                return true;
-            }
-
-            return false;
         }
     }
 }

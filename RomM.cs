@@ -79,7 +79,7 @@ namespace RomM
         // Save sync: one controller; per-game launch timestamps drive playtime ingest on stop.
         private readonly SaveSyncController saveSync;
         private readonly ConcurrentDictionary<Guid, DateTime> gameStartTimesUtc = new ConcurrentDictionary<Guid, DateTime>();
-        private SaveSync.GameSyncStatusControl _saveStatusControl;
+        private SaveSync.SaveSyncSidebarItem _saveSyncSidebar;
 
         // Game ids whose next ItemUpdated was caused by the importer itself, so OnItemUpdated must
         // not echo the change back to the RomM server.
@@ -105,10 +105,11 @@ namespace RomM
             // Limit to 10 concurrent downloads for the moment
             DownloadQueueController = new DownloadQueueController(Playnite, downloadsVm, maxConcurrent: 10);
 
-            // Initialise the sidebar only in desktop mode
+            // Initialise sidebars only in desktop mode
             if (API.Instance.ApplicationInfo.Mode == ApplicationMode.Desktop)
             {
                 DownloadsSidebar = new RomMDownloadsSidebarItem(this);
+                _saveSyncSidebar = new SaveSync.SaveSyncSidebarItem(this);
             }
 
             saveSync = new SaveSyncController(this);
@@ -376,16 +377,15 @@ namespace RomM
         public override IEnumerable<SidebarItem> GetSidebarItems()
         {
             if (DownloadsSidebar != null)
-            {
                 yield return DownloadsSidebar;
-            }
+
+            if (_saveSyncSidebar != null)
+                yield return _saveSyncSidebar;
         }
 
-        public override System.Windows.Controls.Control GetGameViewControl(GetGameViewControlArgs args)
+        public override void OnGameSelected(Playnite.SDK.Events.OnGameSelectedEventArgs args)
         {
-            if (_saveStatusControl == null)
-                _saveStatusControl = new SaveSync.GameSyncStatusControl(this);
-            return _saveStatusControl;
+            _saveSyncSidebar?.NotifyGameSelected(args.NewValue?.FirstOrDefault());
         }
 
         public override IEnumerable<GameMenuItem> GetGameMenuItems(GetGameMenuItemsArgs args)

@@ -1,5 +1,4 @@
 using Playnite.SDK.Models;
-using RomM.Games;
 using RomM.Models.RomM.Sync;
 using RomM.Settings;
 using System;
@@ -18,9 +17,11 @@ namespace RomM.SaveSync
     {
         private readonly IRomM _romM;
         private CancellationTokenSource _cts;
+        private bool _suppressSelectionLoad;
 
         public ObservableCollection<SaveStatusItem> SaveItems { get; } = new ObservableCollection<SaveStatusItem>();
         public ObservableCollection<SaveStatusItem> StateItems { get; } = new ObservableCollection<SaveStatusItem>();
+        public ObservableCollection<Game> AvailableGames { get; } = new ObservableCollection<Game>();
 
         private bool _isLoading;
         public bool IsLoading
@@ -52,23 +53,103 @@ namespace RomM.SaveSync
 
         public bool HasError => !string.IsNullOrEmpty(ErrorText);
         public bool HasStatusNote => !string.IsNullOrEmpty(StatusNote);
-        public bool ShowContent => !IsLoading && !HasError && !HasStatusNote;
-        public bool ShowSavesSection => _romM.Settings.EnableSaveSync;
-        public bool ShowStatesSection => _romM.Settings.EnableStateSync;
+        public bool ShowContent => !IsLoading && !HasError && !HasStatusNote && IsRomMGame;
+        public bool ShowSavesSection => _romM.Settings.EnableSaveSync && SaveItems.Count > 0;
+        public bool ShowStatesSection => _romM.Settings.EnableStateSync && StateItems.Count > 0;
 
         public ICommand RefreshCommand { get; }
 
         private Game _currentGame;
+        public Game SelectedGame
+        {
+            get => _currentGame;
+            set
+            {
+                if (ReferenceEquals(value, _currentGame))
+                    return;
+                if (_suppressSelectionLoad)
+                {
+                    _currentGame = value;
+                    Notify(nameof(SelectedGame));
+                    return;
+                }
+                Load(value);
+            }
+        }
 
         public SaveStatusViewModel(IRomM romM)
         {
             _romM = romM;
-            RefreshCommand = new RelayCommand(() => Load(_currentGame));
+            RefreshCommand = new RelayCommand(() =>
+            {
+                RefreshAvailableGames();
+                Load(_currentGame);
+            });
+            RefreshAvailableGames();
+        }
+
+        /// <summary>Rebuild the RomM-game picker list (call when the sidebar opens).</summary>
+        public void RefreshAvailableGames()
+        {
+            var games = _romM.Playnite.Database.Games
+                .Where(g => g.PluginId == _romM.Id)
+                .OrderBy(g => g.Name)
+                .ToList();
+
+            var selectedId = _currentGame?.Id;
+            AvailableGames.Clear();
+            foreach (var g in games)
+                AvailableGames.Add(g);
+
+            if (selectedId.HasValue)
+            {
+                var match = AvailableGames.FirstOrDefault(g => g.Id == selectedId.Value);
+                if (match != null && !ReferenceEquals(match, _currentGame))
+                {
+                    _suppressSelectionLoad = true;
+                    try
+                    {
+                        _currentGame = match;
+                        Notify(nameof(SelectedGame));
+                    }
+                    finally
+                    {
+                        _suppressSelectionLoad = false;
+                    }
+                }
+            }
         }
 
         public void Load(Game game)
         {
             _currentGame = game;
+            Notify(nameof(SelectedGame));
+
+            // Keep ComboBox selection on the same instance that lives in AvailableGames.
+            if (game != null)
+            {
+                var inList = AvailableGames.FirstOrDefault(g => g.Id == game.Id);
+                if (inList == null)
+                {
+                    RefreshAvailableGames();
+                    inList = AvailableGames.FirstOrDefault(g => g.Id == game.Id);
+                }
+                if (inList != null && !ReferenceEquals(inList, _currentGame))
+                {
+                    _suppressSelectionLoad = true;
+                    try
+                    {
+                        _currentGame = inList;
+                        Notify(nameof(SelectedGame));
+                    }
+                    finally
+                    {
+                        _suppressSelectionLoad = false;
+                    }
+                    game = inList;
+                }
+            }
+
             _cts?.Cancel();
             _cts = new CancellationTokenSource();
             var ct = _cts.Token;
@@ -78,11 +159,22 @@ namespace RomM.SaveSync
             StatusNote = null;
             SaveItems.Clear();
             StateItems.Clear();
+            Notify(nameof(ShowSavesSection));
+            Notify(nameof(ShowStatesSection));
 
-            if (game == null || game.PluginId != global::RomM.RomM.PluginId)
+            if (game == null)
             {
                 IsRomMGame = false;
                 IsLoading = false;
+                StatusNote = "Select a RomM game to see save sync status.";
+                return;
+            }
+
+            if (game.PluginId != _romM.Id)
+            {
+                IsRomMGame = false;
+                IsLoading = false;
+                StatusNote = "Not a RomM game — pick one from the list, or select a RomM title in the library.";
                 return;
             }
 
@@ -91,26 +183,28 @@ namespace RomM.SaveSync
             if (!_romM.Settings.EnableSaveSync && !_romM.Settings.EnableStateSync)
             {
                 IsLoading = false;
-                StatusNote = "Save sync is disabled — enable it in Settings > RomM > Save Sync.";
+                StatusNote = "Save sync is disabled — enable it in Settings → RomM → Save sync.";
                 return;
             }
 
-            if (!RomMGameId.TryParse(game.GameId, out var romId, out _) &&
-                (string.IsNullOrEmpty(game.Version) || !game.Version.StartsWith("RomM:") ||
-                 !int.TryParse(game.Version.Split(':')[1], out romId)))
+            if (!SaveSyncGameResolve.TryGetRomId(game, out var romId))
             {
                 IsLoading = false;
                 StatusNote = "No RomM ID on this game. Run a library update.";
                 return;
             }
 
-            var mapping = game.GetRomMGameInfo()?.Mapping;
-            if (mapping == null || !mapping.SyncSaves)
+            if (!SaveSyncGameResolve.TryGetMapping(game, _romM, out var mapping, out var mapErr))
             {
                 IsLoading = false;
-                StatusNote = mapping == null
-                    ? "No emulator mapping for this game."
-                    : "Save sync is disabled for this emulator mapping.";
+                StatusNote = mapErr;
+                return;
+            }
+
+            if (!mapping.SyncSaves)
+            {
+                IsLoading = false;
+                StatusNote = "Save sync is disabled for this emulator mapping (enable 'Sync saves' on the mapping).";
                 return;
             }
 
@@ -139,7 +233,16 @@ namespace RomM.SaveSync
                     foreach (var item in saveItems) SaveItems.Add(item);
                     StateItems.Clear();
                     foreach (var item in stateItems) StateItems.Add(item);
+                    Notify(nameof(ShowSavesSection));
+                    Notify(nameof(ShowStatesSection));
                     IsLoading = false;
+
+                    if (saveItems.Count == 0 && stateItems.Count == 0)
+                    {
+                        StatusNote = paths.Resolved
+                            ? "No local or server saves found for this game yet."
+                            : "Could not resolve the local save folder for this emulator mapping.";
+                    }
                 });
             }
             catch (Exception ex)
@@ -380,7 +483,11 @@ namespace RomM.SaveSync
 
         public RelayCommand(Action execute) { _execute = execute; }
 
-        public event EventHandler CanExecuteChanged;
+        public event EventHandler CanExecuteChanged
+        {
+            add { }
+            remove { }
+        }
 
         public bool CanExecute(object parameter) => true;
 

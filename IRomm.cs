@@ -15,6 +15,8 @@ namespace RomM
         MetadataProperty Source { get; }
         Downloads.DownloadQueueController DownloadQueueController { get; }
         string GetPluginUserDataPath();
+        /// <summary>Directory of per-ROM sidecar JSON files (<c>{sha1}.json</c>) written on import.</summary>
+        string ROMDataPath { get; }
         RomMRom FetchRom(string romId);
 
     }
