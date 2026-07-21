@@ -1,18 +1,17 @@
-﻿using Playnite.SDK.Models;
-using Playnite.SDK.Plugins;
-using RomM.Settings;
+using Playnite.SDK.Models;
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using ProtoBuf;
-using Playnite.SDK;
 
 namespace RomM.Games
 {
+    // Pure serialization half of RomMGameInfo: the protobuf contract behind the legacy "!0..." game
+    // ids, plus the (de)serialization round-trip. Split from the plugin-coupled half (Mapping, install
+    // controllers) so it can be unit-tested without the Playnite/plugin runtime. The protobuf member
+    // numbers MUST stay stable — existing installs encode their game ids with them.
     [ProtoContract]
-    internal class RomMGameInfo
+    internal partial class RomMGameInfo
     {
         [ProtoMember(1)]
         public Guid MappingId { get; set; }
@@ -25,14 +24,6 @@ namespace RomM.Games
 
         [ProtoMember(4)]
         public bool HasMultipleFiles { get; set; }
-
-        public EmulatorMapping Mapping
-        {
-            get
-            {
-                return Settings.SettingsViewModel.Instance.Mappings.FirstOrDefault(m => m.MappingId == MappingId);
-            }
-        }
 
         public string AsGameId()
         {
@@ -66,35 +57,6 @@ namespace RomM.Games
             {
                 return Serializer.Deserialize<T>(ms);
             }
-        }
-
-        public InstallController GetInstallController(Game game, RomM romm, bool HasSiblings, int SelectedSibling) => new RomMInstallController(game, romm, HasSiblings, SelectedSibling);
-
-        public UninstallController GetUninstallController(Game game, RomM romm) => new RomMUninstallController(game, romm);
-
-        protected IEnumerable<string> GetDescriptionLines()
-        {
-            yield return $"{nameof(DownloadUrl)} : {DownloadUrl}";
-        }
-
-        public string ToDescriptiveString(Game g)
-        {
-            var sb = new System.Text.StringBuilder();
-            sb.AppendLine($"Game: {g.Name}");
-            sb.AppendLine($"Type: {GetType()}");
-            sb.AppendLine($"{nameof(MappingId)}: {MappingId}");
-
-            GetDescriptionLines().ForEach(l => sb.AppendLine(l));
-
-            var mapping = Mapping;
-            if (mapping != null)
-            {
-                sb.AppendLine();
-                sb.AppendLine("Mapping Info:");
-                mapping.GetDescriptionLines().ForEach(l => sb.AppendLine($"    {l}"));
-            }
-
-            return sb.ToString();
         }
     }
 }

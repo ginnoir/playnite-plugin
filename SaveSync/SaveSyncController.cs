@@ -81,7 +81,7 @@ namespace RomM.SaveSync
                 return result;
             }
 
-            var profile = PlatformSaveProfiles.Get(mapping.Platform?.Id);
+            var profile = PlatformSaveProfiles.Get(mapping.RomMPlatform?.Slug, mapping.RomMPlatform?.FsSlug);
             var locator = new SaveLocator(Logger);
             var paths = locator.Resolve(mapping, game);
             if (!paths.Resolved)
@@ -382,7 +382,7 @@ namespace RomM.SaveSync
             var deviceId = DeviceIdentity.EnsureRegistered(client, Settings, Logger);
             if (string.IsNullOrEmpty(deviceId)) return result;
 
-            var profile = PlatformSaveProfiles.Get(mapping.Platform?.Id);
+            var profile = PlatformSaveProfiles.Get(mapping.RomMPlatform?.Slug, mapping.RomMPlatform?.FsSlug);
             var locator = new SaveLocator(Logger);
             var paths = locator.Resolve(mapping, game);
             if (!paths.Resolved) return result;
@@ -619,12 +619,26 @@ namespace RomM.SaveSync
         private static bool TryGetRomId(Game game, out int romId)
         {
             romId = -1;
-            var version = game?.Version;
-            if (string.IsNullOrEmpty(version) || !version.StartsWith("RomM:"))
+            if (game == null)
             {
                 return false;
             }
-            return int.TryParse(version.Split(':')[1], out romId);
+
+            // Current format: GameId = "{romMId}:{sha1}"
+            if (RomMGameId.TryParse(game.GameId, out romId, out _))
+            {
+                return true;
+            }
+
+            // Legacy: Version = "RomM:{id}" (pre-GameId migration)
+            var version = game.Version;
+            if (!string.IsNullOrEmpty(version) && version.StartsWith("RomM:") &&
+                int.TryParse(version.Split(':')[1], out romId))
+            {
+                return true;
+            }
+
+            return false;
         }
     }
 }

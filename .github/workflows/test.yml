@@ -1,0 +1,61 @@
+name: Tests
+
+# Runs the RomM.Tests unit suite, and (on direct pushes) also compiles the plugin so the
+# pure-logic seams stay in sync. The test project links the plugin's pure-logic source files
+# directly (no WPF/XAML project reference), so it builds/runs under `dotnet test` rather than the
+# full msbuild flow used to package the extension.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Compile the plugin itself on pushes (PRs are already covered by pr-build.yml). Mirrors that
+  # workflow so seam refactors that touch the WPF/plugin project are verified here too.
+  build-plugin:
+    if: github.event_name == 'push'
+    runs-on: windows-2025-vs2026
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Restore dependencies
+        run: |
+          dotnet restore
+          dotnet add package Microsoft.Net.Sdk.Compilers.Toolset --version 9.0.300
+
+      - name: Build with MSBuild
+        run: |
+          msbuild RomM.csproj /p:Configuration=Release /p:Platform="AnyCPU" /p:RestorePackages=false
+
+  test:
+    runs-on: windows-2025-vs2026
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Restore
+        run: dotnet restore RomM.Tests/RomM.Tests.csproj
+
+      - name: Test
+        run: dotnet test RomM.Tests/RomM.Tests.csproj --configuration Release --no-restore --logger "console;verbosity=normal"

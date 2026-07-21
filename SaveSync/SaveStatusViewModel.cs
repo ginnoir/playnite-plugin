@@ -95,9 +95,9 @@ namespace RomM.SaveSync
                 return;
             }
 
-            var version = game.Version;
-            if (string.IsNullOrEmpty(version) || !version.StartsWith("RomM:") ||
-                !int.TryParse(version.Split(':')[1], out var romId))
+            if (!RomMGameId.TryParse(game.GameId, out var romId, out _) &&
+                (string.IsNullOrEmpty(game.Version) || !game.Version.StartsWith("RomM:") ||
+                 !int.TryParse(game.Version.Split(':')[1], out romId)))
             {
                 IsLoading = false;
                 StatusNote = "No RomM ID on this game. Run a library update.";
@@ -123,7 +123,7 @@ namespace RomM.SaveSync
             {
                 var locator = new SaveLocator(_romM.Logger);
                 var paths = locator.Resolve(mapping, game);
-                var profile = PlatformSaveProfiles.Get(mapping.Platform?.Id);
+                var profile = PlatformSaveProfiles.Get(mapping.RomMPlatform?.Slug, mapping.RomMPlatform?.FsSlug);
                 var client = new SaveSyncClient(_romM.Settings.RomMHost, _romM.Logger);
                 var hasAuth = !string.IsNullOrEmpty(_romM.Settings.RomMHost) && _romM.Settings.HasAnyAuth;
 
